@@ -76,9 +76,7 @@ pub const fn evaluate_synthetic_promotion(
     let promoted = match policy {
         SyntheticPromotionPolicy::SelfScore => evidence.proposal_score > 0,
         SyntheticPromotionPolicy::VerifyMeasure => {
-            evidence.compile_passed
-                && evidence.correctness_passed
-                && evidence.performance_score > 0
+            evidence.compile_passed && evidence.correctness_passed && evidence.performance_score > 0
         }
         SyntheticPromotionPolicy::FullEnvelope => {
             evidence.compile_passed
@@ -150,7 +148,8 @@ mod tests {
             },
             2,
         );
-        let outcome = evaluate_synthetic_promotion(candidate, SyntheticPromotionPolicy::FullEnvelope);
+        let outcome =
+            evaluate_synthetic_promotion(candidate, SyntheticPromotionPolicy::FullEnvelope);
         assert!(!outcome.promoted);
     }
 
