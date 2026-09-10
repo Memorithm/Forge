@@ -89,7 +89,9 @@ pub const fn evaluate_synthetic_promotion(
     let promoted = match policy {
         SyntheticPromotionPolicy::SelfScore => evidence.proposal_score > 0,
         SyntheticPromotionPolicy::VerifyMeasure => {
-            evidence.compile_passed && evidence.correctness_passed && evidence.performance_score > 0
+            evidence.compile_passed
+                && evidence.correctness_passed
+                && evidence.performance_score > 0
         }
         SyntheticPromotionPolicy::FullEnvelope => {
             evidence.compile_passed
@@ -138,7 +140,8 @@ pub fn evaluate_synthetic_population(
                 summary.true_promotions += 1;
             } else {
                 summary.false_promotions += 1;
-                summary.cumulative_regression_magnitude += outcome.true_quality_delta.saturating_abs();
+                summary.cumulative_regression_magnitude +=
+                    outcome.true_quality_delta.saturating_abs();
             }
         } else if outcome.true_quality_delta > 0 {
             summary.false_negatives += 1;
@@ -271,7 +274,8 @@ mod tests {
 
     #[test]
     fn population_summary_counts_false_promotions_and_regression_magnitude() {
-        let summary = evaluate_synthetic_population(&population(), SyntheticPromotionPolicy::SelfScore);
+        let summary =
+            evaluate_synthetic_population(&population(), SyntheticPromotionPolicy::SelfScore);
         assert_eq!(summary.candidates, 4);
         assert_eq!(summary.promoted, 3);
         assert_eq!(summary.true_promotions, 1);
