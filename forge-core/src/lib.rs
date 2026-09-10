@@ -46,6 +46,7 @@ pub mod protocol;
 pub mod registry;
 mod tls;
 mod trial;
+pub mod verified_improvement;
 
 pub mod report_util;
 
