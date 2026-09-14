@@ -2,7 +2,7 @@
 name = "forge-nnis"
 version = "0.1.0"
 edition = "2021"
-license = "LicenseRef-CheckupAuto-Dual"
+license = "PolyForm-Noncommercial-1.0.0"
 description = "NNIS execution backend for Forge kernel-agent campaigns"
 publish = false
 
