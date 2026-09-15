@@ -53,7 +53,11 @@ impl Score {
     }
 
     fn has_finite_objectives(&self) -> bool {
-        self.valid && self.objectives.iter().all(|objective| objective.is_finite())
+        self.valid
+            && self
+                .objectives
+                .iter()
+                .all(|objective| objective.is_finite())
     }
 
     /// Domination au sens de Pareto (minimisation). Un score invalide est
