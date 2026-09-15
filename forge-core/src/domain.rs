@@ -37,20 +37,40 @@ impl Score {
     }
 
     /// Construit un score valide a partir d'objectifs finis.
+    ///
+    /// Toute valeur `NaN`, `+inf` ou `-inf` invalide le score complet. Cette
+    /// conversion fail-closed evite qu'une comparaison IEEE partielle puisse
+    /// transformer une mesure non finie en faux avantage de Pareto.
     pub fn valid(objectives: Vec<f64>) -> Self {
-        Score {
-            objectives,
-            valid: true,
+        if objectives.iter().all(|objective| objective.is_finite()) {
+            Score {
+                objectives,
+                valid: true,
+            }
+        } else {
+            Score::invalid()
         }
+    }
+
+    fn has_finite_objectives(&self) -> bool {
+        self.valid
+            && self
+                .objectives
+                .iter()
+                .all(|objective| objective.is_finite())
     }
 
     /// Domination au sens de Pareto (minimisation). Un score invalide est
     /// domine par n'importe quel score valide, et ne domine rien.
+    ///
+    /// La finitude est revalidee ici en plus du constructeur afin que des
+    /// scores restaures depuis un checkpoint ou des donnees distribuees ne
+    /// puissent pas contourner la porte via des champs serialises directement.
     pub fn dominates(&self, other: &Score) -> bool {
-        if !self.valid {
+        if !self.has_finite_objectives() {
             return false;
         }
-        if !other.valid {
+        if !other.has_finite_objectives() {
             return true;
         }
         if self.objectives.len() != other.objectives.len() {
@@ -132,5 +152,29 @@ mod tests {
         let i = Score::invalid();
         assert!(v.dominates(&i));
         assert!(!i.dominates(&v));
+    }
+
+    #[test]
+    fn non_finite_objectives_fail_closed() {
+        let finite = Score::valid(vec![1.0, 2.0]);
+        for non_finite in [f64::NAN, f64::INFINITY, f64::NEG_INFINITY] {
+            let score = Score::valid(vec![0.0, non_finite]);
+            assert!(!score.valid);
+            assert!(score.objectives.is_empty());
+            assert!(!score.dominates(&finite));
+            assert!(finite.dominates(&score));
+        }
+    }
+
+    #[test]
+    fn deserialized_shape_with_non_finite_objective_cannot_dominate() {
+        let malformed = Score {
+            objectives: vec![f64::NAN, 0.0],
+            valid: true,
+        };
+        let finite = Score::valid(vec![1.0, 1.0]);
+
+        assert!(!malformed.dominates(&finite));
+        assert!(finite.dominates(&malformed));
     }
 }
