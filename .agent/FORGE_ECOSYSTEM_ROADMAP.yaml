@@ -308,3 +308,23 @@ scientific_search_consumer_2026_09_16:
     - no_adaptive_LLM_optimizer_final_research_or_hardware_claim
     - no_FG1_FG2_FG3_FG4_FG6_or_ML_5_of_5_promotion
     - final_review_CI_and_consumer_repin_are_required_before_integration_promotion
+
+research_engine_integrated_consumer_2026_09_16:
+  status: implemented_public_software_candidate_not_release_qualified
+  consumer_pull_request: https://github.com/Memorithm/TDI/pull/413
+  consumer_revision: cabb0b5ab2c6ad2c45121134bbeffa4c822ef028
+  public_software_evidence: 70_actual_process_integration_tests_passed_locally
+  source_build_attestation: false
+  hardware_execution_performed: false
+  final_or_blocked_model_authorization: false
+  exact_head_ci: pending
+  authority: no_existing_stage_default_backend_or_maturity_promotion
+  source_pull_request: https://github.com/Memorithm/Forge/pull/39
+  source_revision: 0d48a91a5eed6a9ae09a5eacd7c4f18df8bdd333
+  integration_scope:
+    - real_compile_verify_measure_and_incorrect_candidate_exclusion
+    - durable_unknown_submission_cancellation_and_no_measurement_redispatch
+    - actual_UI_candidate_cost_baseline_Pareto_and_stage_campaign_links
+  observed_source_checks: 3_queued
+  next: qualify_upstream_then_pin_actual_merge_SHA_and_requalify_TDI
+  forbidden_inference: no_FG_phase_or_ML_5_of_5_promotion
