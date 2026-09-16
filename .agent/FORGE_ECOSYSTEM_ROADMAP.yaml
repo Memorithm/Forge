@@ -284,3 +284,27 @@ agent_operating_protocol:
     If this roadmap cannot be read, do not make major search-policy, security,
     cross-repository integration, candidate-promotion, or merge decisions.
     Read-only diagnosis is allowed.
+
+scientific_search_consumer_2026_09_16:
+  status: implemented_narrow_candidate_pending_exact_head_qualification
+  source_pull_request: https://github.com/Memorithm/Forge/pull/39
+  source_revision: 0d48a91a5eed6a9ae09a5eacd7c4f18df8bdd333
+  protocol: forge-finite-search/v1
+  consumer_pull_request: https://github.com/Memorithm/TDI/pull/385
+  consumer_revision: 135fc20520fed390d23e78f6374a6a0207a26a4d
+  implemented:
+    - bounded_grid_and_seeded_random_without_replacement
+    - immutable_spec_candidate_attempt_and_replayed_command_lineage
+    - compile_or_materialize_then_independent_verify_then_measure
+    - baseline_eligibility_required_for_Pareto_and_constraints_cannot_forbid_the_baseline
+    - nonrefundable_reservations_retries_unknown_costs_and_overshoot_exclusion
+    - real_Hub_finite_state_process_consumer_with_restart_reconciliation_and_pending_cancellation
+  local_evidence:
+    - 48_forge_bridge_all_target_tests_and_actual_process_protocol_checks_pass
+    - workspace_clippy_passed_but_no_single_full_workspace_test_completion_claim
+    - actual_TDI_Forge_Hub_workflows_preserve_incorrect_exclusion_and_lost_reply_recovery
+  limitations:
+    - trusted_parameter_profile_only_no_hostile_code_sandbox
+    - no_adaptive_LLM_optimizer_final_research_or_hardware_claim
+    - no_FG1_FG2_FG3_FG4_FG6_or_ML_5_of_5_promotion
+    - final_review_CI_and_consumer_repin_are_required_before_integration_promotion
