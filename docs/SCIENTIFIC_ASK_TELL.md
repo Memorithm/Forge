@@ -69,7 +69,9 @@ Pending stage permits must be reconciled with the executor after a crash. Never
 assume a lost reply means no process ran. Stale attempt completions are rejected.
 History replay is deliberately bounded; this API is not an unbounded event store.
 
-The first grid point is the baseline for both strategies. Grid enumeration and
+The first grid point is the baseline for both strategies. Constraints must leave
+this baseline admissible; otherwise specification validation rejects the search
+before any proposal or execution. Grid enumeration and
 seeded `StdRng`/rand 0.8 shuffling without replacement are the two reproducible
 baselines. The shuffle preserves the first point. Each proposal records its spec,
 generator, ordinal and parameters; independent baseline proposals have no parent.

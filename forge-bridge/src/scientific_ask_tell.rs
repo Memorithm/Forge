@@ -328,6 +328,18 @@ impl SearchSpec {
                 return Err("invalid forbidden conjunction".into());
             }
         }
+        let baseline: BTreeMap<&String, &String> = self
+            .dimensions
+            .iter()
+            .map(|d| (&d.name, &d.values[0]))
+            .collect();
+        if self
+            .forbidden_combinations
+            .iter()
+            .any(|c| c.iter().all(|(k, v)| baseline.get(k) == Some(&v)))
+        {
+            return Err("declared baseline is forbidden by search constraints".into());
+        }
         let b = &self.budget;
         if !(1..=256).contains(&b.max_proposals)
             || !(1..=768).contains(&b.max_stage_attempts)

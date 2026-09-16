@@ -37,6 +37,9 @@ call(encode(changed), False)
 unknown = copy.deepcopy(fixture)
 unknown["spec"]["manifest"]["external_domain"]["upstream"]["unknown"] = 1
 call(encode(unknown), False)
+forbidden_baseline = copy.deepcopy(fixture)
+forbidden_baseline["spec"]["forbidden_combinations"] = [{"implementation": "reference"}]
+call(encode(forbidden_baseline), False)
 raw = encode(fixture)
 for bad in [b'{"spec":{},' + raw[1:], raw.replace(b'"seed":"18446744073709551615"', b'"seed":18446744073709551616'),
             raw.replace(b'"commit_id":', b'"commit_id":"duplicate", "commit_id":', 1), b" " * (4 * 1024 * 1024 + 1)]:

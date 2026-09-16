@@ -378,6 +378,18 @@ fn bounded_random_baseline_constraints_and_wall_time_overshoot() {
 
 #[test]
 fn invalid_space_and_unqualified_isolation_are_rejected() {
+    for strategy in [Strategy::Grid, Strategy::RandomWithoutReplacement] {
+        let mut invalid = spec();
+        invalid.strategy = strategy;
+        invalid.forbidden_combinations = vec![("implementation".into(), "reference".into())]
+            .into_iter()
+            .map(|entry| [entry].into_iter().collect())
+            .collect();
+        assert!(invalid
+            .validate()
+            .unwrap_err()
+            .contains("baseline is forbidden"));
+    }
     let mut s = spec();
     s.dimensions[0].values.push("reference".into());
     assert!(s.validate().is_err());
