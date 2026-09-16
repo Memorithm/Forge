@@ -13,6 +13,7 @@ pub mod candidate_envelope;
 pub mod destination_requalification;
 pub mod external_domain;
 pub mod llm_ollama;
+pub mod scientific_ask_tell;
 pub mod scientific_domain;
 pub mod scientific_domain_access;
 pub mod scientific_search_provenance;

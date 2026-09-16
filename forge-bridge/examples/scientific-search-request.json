@@ -1,0 +1,44 @@
+{
+  "spec": {
+    "schema_version": 1,
+    "generator_version": "forge-finite-search/v1",
+    "manifest": {
+      "schema_version": 1,
+      "external_domain": {
+        "schema_version": 1,
+        "domain_id": "tdi/inert-contract-fixture",
+        "upstream": {
+          "repository": "Memorithm/TDI",
+          "commit_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "contract_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+        },
+        "allowed_candidate_dimensions": ["implementation"],
+        "data_boundary": {
+          "generation_sources": ["public-development-fixture"],
+          "verification_sources": ["validation-fixture"],
+          "final_holdout_sources": []
+        },
+        "verification": {
+          "adapter_id": "inert-contract-fixture",
+          "adapter_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+        },
+        "objectives": [{"name": "latency", "direction": "minimize"}],
+        "environment": {"fingerprint_required": true, "isolation_required": false}
+      }
+    },
+    "dimensions": [{"name": "implementation", "values": ["reference", "candidate"]}],
+    "forbidden_combinations": [],
+    "objective_units": ["ns"],
+    "strategy": "grid",
+    "seed": "18446744073709551615",
+    "budget": {
+      "max_proposals": 2,
+      "max_stage_attempts": 6,
+      "max_attempts_per_stage": 1,
+      "stage_timeout_ms": 1000,
+      "max_reserved_ms": 6000
+    }
+  },
+  "checkpoint": null,
+  "command": {"request_id": "first-proposal", "operation": {"op": "ask"}}
+}
