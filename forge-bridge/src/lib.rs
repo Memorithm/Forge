@@ -16,7 +16,9 @@ pub mod llm_ollama;
 pub mod scientific_ask_tell;
 pub mod scientific_domain;
 pub mod scientific_domain_access;
+mod scientific_gp;
 pub mod scientific_search_provenance;
+mod scientific_tpe;
 pub mod soup_campaign;
 pub mod soup_posttrain;
 
