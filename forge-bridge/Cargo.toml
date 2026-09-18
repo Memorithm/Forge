@@ -16,6 +16,7 @@ serde_json = "1"
 forge-core = { path = "../forge-core" }
 rand = "0.8"
 sha2 = "0.10.9"
+scirust-gp = { git = "https://github.com/Memorithm/scirust", rev = "146575107005c24a47682dcaa08c4cd9464d1cc3" }
 
 [features]
 default = []

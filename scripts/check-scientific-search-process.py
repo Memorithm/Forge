@@ -45,3 +45,18 @@ for bad in [b'{"spec":{},' + raw[1:], raw.replace(b'"seed":"18446744073709551615
             raw.replace(b'"commit_id":', b'"commit_id":"duplicate", "commit_id":', 1), b" " * (4 * 1024 * 1024 + 1)]:
     call(bad, False)
 print("Forge process: deterministic replay, exact duplicates, nested closed schema, u64 seed and input bounds passed")
+
+# Version identity is explicit on the actual executable protocol.
+for strategy, version in (("adaptive-tpe", "forge-finite-tpe/v1"),
+                          ("adaptive-gp", "forge-finite-gp/v1")):
+    adaptive = copy.deepcopy(fixture)
+    adaptive["spec"]["strategy"] = strategy
+    adaptive["spec"]["generator_version"] = version
+    adaptive["spec"]["manifest"]["external_domain"]["objectives"] = adaptive["spec"]["manifest"]["external_domain"]["objectives"][:1]
+    adaptive["spec"]["objective_units"] = adaptive["spec"]["objective_units"][:1]
+    response = call(encode(adaptive))
+    assert response == call(encode(adaptive))
+    assert response["snapshot"]["candidates"][0]["proposal"]["generator_version"] == version
+    adaptive["spec"]["generator_version"] = "forge-finite-search/v1"
+    call(encode(adaptive), False)
+print("Adaptive TPE and SciRust GP: explicit version identity and replay passed")

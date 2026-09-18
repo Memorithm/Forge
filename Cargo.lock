@@ -240,6 +240,7 @@ dependencies = [
  "anyhow",
  "forge-core",
  "rand",
+ "scirust-gp",
  "serde",
  "serde_json",
  "sha2",
@@ -825,6 +826,11 @@ dependencies = [
  "rustls-pki-types",
  "untrusted",
 ]
+
+[[package]]
+name = "scirust-gp"
+version = "0.1.0"
+source = "git+https://github.com/Memorithm/scirust?rev=146575107005c24a47682dcaa08c4cd9464d1cc3#146575107005c24a47682dcaa08c4cd9464d1cc3"
 
 [[package]]
 name = "scopeguard"

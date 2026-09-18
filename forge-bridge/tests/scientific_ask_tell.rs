@@ -131,7 +131,10 @@ impl Driver {
                         unit: "bytes".into(),
                         value: memory,
                     },
-                ],
+                ]
+                .into_iter()
+                .take(self.spec.objective_units.len())
+                .collect(),
             },
         );
     }
@@ -406,4 +409,134 @@ fn invalid_space_and_unqualified_isolation_are_rejected() {
         .generation_sources
         .push("final-sentinel".into());
     assert!(s.validate().is_err());
+}
+
+fn adaptive_spec() -> SearchSpec {
+    let mut s = spec();
+    s.strategy = Strategy::AdaptiveTpe;
+    s.generator_version = "forge-finite-tpe/v1".into();
+    s.manifest.external_domain.objectives.truncate(1);
+    s.objective_units.truncate(1);
+    s.dimensions = ["a", "b", "c"]
+        .iter()
+        .map(|name| Dimension {
+            name: (*name).into(),
+            values: (0..4).map(|x| format!("v{x}")).collect(),
+        })
+        .collect();
+    s.manifest.external_domain.allowed_candidate_dimensions =
+        s.dimensions.iter().map(|d| d.name.clone()).collect();
+    s.budget.max_proposals = 32;
+    s.budget.max_stage_attempts = 100;
+    s.budget.max_reserved_ms = 10000;
+    s
+}
+
+#[test]
+fn adaptive_replay_unique_constraints_and_direction_symmetry() {
+    adaptive_replay_for(Strategy::AdaptiveTpe, "forge-finite-tpe/v1");
+    adaptive_replay_for(Strategy::AdaptiveGp, "forge-finite-gp/v1");
+}
+
+fn adaptive_replay_for(strategy: Strategy, version: &str) {
+    let mut s = adaptive_spec();
+    s.strategy = strategy;
+    s.generator_version = version.into();
+    s.forbidden_combinations
+        .push([("a".into(), "v3".into())].into());
+    let mut minimize = Driver::new(s.clone());
+    s.manifest.external_domain.objectives[0].direction = forge_bridge::ObjectiveDirection::Maximize;
+    let mut maximize = Driver::new(s);
+    let mut seen = std::collections::BTreeSet::new();
+    for i in 0..32 {
+        let a = minimize.ask();
+        let b = maximize.ask();
+        assert_eq!(a.parameters, b.parameters);
+        assert_ne!(a.parameters["a"], "v3");
+        assert!(seen.insert(a.parameters.clone()));
+        if i == 0 {
+            assert!(a.parameters.values().all(|v| v == "v0"));
+        }
+        let loss = a.parameters.values().filter(|v| *v != "v2").count() as f64;
+        minimize.verify(&a, true);
+        minimize.measured(&a, loss, 0.0);
+        maximize.verify(&b, true);
+        maximize.measured(&b, -loss, 0.0);
+        let restored = handle(Request {
+            spec: minimize.spec.clone(),
+            checkpoint: Some(minimize.response.checkpoint.clone()),
+            command: None,
+        })
+        .unwrap();
+        assert_eq!(minimize.response, restored);
+    }
+    assert!(matches!(
+        minimize.submit(Operation::Ask),
+        Receipt::Rejected { .. }
+    ));
+}
+
+#[test]
+fn adaptive_requires_version_and_single_objective() {
+    let mut s = adaptive_spec();
+    s.generator_version = "forge-finite-search/v1".into();
+    assert!(s.validate().is_err());
+    s = adaptive_spec();
+    s.manifest
+        .external_domain
+        .objectives
+        .push(spec().manifest.external_domain.objectives[1].clone());
+    s.objective_units.push("bytes".into());
+    assert!(s.validate().is_err());
+}
+
+#[test]
+fn adaptive_never_learns_from_unqualified_baseline_or_incorrect_candidates() {
+    let mut a = Driver::new(adaptive_spec());
+    let mut b = Driver::new(adaptive_spec());
+    for i in 0..16 {
+        let ca = a.ask();
+        let cb = b.ask();
+        assert_eq!(ca.parameters, cb.parameters);
+        // Neither search may fit without its verified/measured baseline.
+        // Later extreme valid measurements cannot activate it accidentally.
+        a.verify(&ca, i != 0);
+        if i != 0 {
+            a.measured(&ca, -f64::MAX, 0.0);
+        }
+        b.verify(&cb, false);
+        assert!(b
+            .response
+            .snapshot
+            .candidates
+            .last()
+            .unwrap()
+            .metrics
+            .is_none());
+    }
+    assert!(!a.response.snapshot.baseline_qualified);
+    assert!(a.response.snapshot.pareto_candidate_ids.is_empty());
+}
+
+#[test]
+fn adaptive_admissible_space_exhaustion_is_explicit() {
+    let mut s = adaptive_spec();
+    s.dimensions.truncate(1);
+    s.manifest
+        .external_domain
+        .allowed_candidate_dimensions
+        .truncate(1);
+    s.forbidden_combinations = (1..4)
+        .map(|i| [("a".into(), format!("v{i}"))].into())
+        .collect();
+    let mut d = Driver::new(s);
+    let c = d.ask();
+    d.verify(&c, true);
+    d.measured(&c, 1.0, 0.0);
+    assert_eq!(
+        d.submit(Operation::Ask),
+        Receipt::Rejected {
+            reason: "admissible finite space exhausted".into()
+        }
+    );
 }

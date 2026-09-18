@@ -36,8 +36,9 @@ nulls. Duplicate keys, overflowing/nonfinite numbers and trailing JSON fail.
 Input is at most 4 MiB, output at most 8 MiB; contract errors exit 21 without a
 partial JSON result. Structurally valid but invalid transitions return a recorded
 `rejected` receipt. The administrative response contains validation identities
-and evidence: do not send the whole response to a candidate proposer. Only
-`generation_view` and the declared categorical dimensions belong to that role.
+and evidence: do not send the whole response to a candidate proposer. External proposers receive only `generation_view` and declared categorical
+dimensions. The native adaptive policy additionally receives the restricted
+measurement projection described below, never the administrative response.
 
 | Operation | Required evidence / resulting state |
 | --- | --- |
@@ -69,13 +70,13 @@ Pending stage permits must be reconciled with the executor after a crash. Never
 assume a lost reply means no process ran. Stale attempt completions are rejected.
 History replay is deliberately bounded; this API is not an unbounded event store.
 
-The first grid point is the baseline for both strategies. Constraints must leave
+The first grid point is the baseline for every strategy. Constraints must leave
 this baseline admissible; otherwise specification validation rejects the search
 before any proposal or execution. Grid enumeration and
 seeded `StdRng`/rand 0.8 shuffling without replacement are the two reproducible
 baselines. The shuffle preserves the first point. Each proposal records its spec,
 generator, ordinal and parameters; independent baseline proposals have no parent.
-There is no adaptive or LLM optimizer advantage claim in v1.
+Legacy `forge-finite-search/v1` checkpoints and proposal order remain unchanged.
 
 Incorrect candidates keep their negative verification evidence and receive no
 metrics. Pareto selection is unavailable until the baseline is verified and
@@ -101,3 +102,63 @@ projection and Pareto tradeoffs. These Rust tests use explicitly synthetic
 contract evidence. Executed TDI/Hub integration supplies real process outcomes,
 independent finite-state oracle checks and OS measurements; software conformance
 does not establish model quality, GPU performance or ML maturity 5/5.
+
+
+## Adaptive categorical policy
+
+Set `strategy: "adaptive-tpe"` and `generator_version: "forge-finite-tpe/v1"`.
+This version supports exactly one declared objective, minimizing or maximizing;
+unsupported multi-objective requests fail closed instead of silently scalarizing.
+The existing grid/random policies keep their generator version and behavior.
+
+After ten successful observations, the policy ranks eligible measurements and
+splits the best ceil(n/5) observations from the rest. Each density averages a
+joint categorical Parzen mixture and a product of categorical marginals. Each
+kernel has 0.8 mass on the observed category plus 0.2 uniform mass; a uniform
+pseudo-observation supplies positive support. The policy maximizes the good/bad
+density ratio over all admissible, untried points (at most 4,096). Every fifth
+proposal uses the next untried point in the seeded permutation. Ties and flat
+objectives also use permutation order. No numeric geometry is inferred from
+category names. These constants and arithmetic are part of the generator version.
+
+The administrative layer supplies only category indices and direction-normalized
+scalar measurements for terminal `measured` candidates with successful independent
+verification, and only after the baseline qualifies. Failed, incorrect, abandoned,
+overshooting and unmeasured candidates supply no scores. Validation identifiers,
+oracle contents, holdout sources, alternative campaigns and timings are absent
+from that projection. Checkpoint replay rederives every adaptive decision; it
+stores no trusted fitted model or opaque RNG state. Changing the policy version
+invalidates a checkpoint. Replay reproducibility is qualified for the pinned
+build/toolchain; cross-platform floating-point bit identity is not promised.
+
+Unlike the legacy baselines, this policy filters forbidden conjunctions before
+acquisition, charges only actual proposals and reports admissible-space exhaustion
+explicitly. All attempted points, including failed ones, are excluded from later
+proposals. Retries of stages remain separate and retain their existing accounting.
+
+This is an original bounded finite-space implementation inspired by the
+[density-ratio TPE approach](https://papers.nips.cc/paper/4443-algorithms-for-hyper-parameter-optimization),
+not a port or behavioral clone of Optuna. The
+[Optuna sampler reference](https://optuna.readthedocs.io/en/stable/reference/samplers/generated/optuna.samplers.TPESampler.html)
+describes its own multivariate model, priors and proposal sampling. Adaptive
+capability is a software property; superiority requires separate matched-budget
+measurements. TDI owns that comparison and preserves earlier negative evidence.
+
+## SciRust Gaussian-process policy
+
+Set `strategy: "adaptive-gp"`, `generator_version: "forge-finite-gp/v1"` and one
+objective. The same feedback projection, startup count, exploration cadence,
+constraints and replay rules apply. The pinned, dependency-free `scirust-gp`
+crate owns exact Cholesky regression. Forge supplies a positive-definite
+categorical kernel: half the fraction of matching coordinates plus half
+`exp(-2 * number_of_mismatches)`. This combines additive effects and interactions
+without inferring metric distance from category labels. Targets are divided by
+maximum absolute value before centering and standardizing, avoiding overflow on
+extreme finite measurements. A fixed `1e-6` diagonal noise variance regularizes
+fitting. Acquisition minimizes posterior mean minus twice posterior standard
+deviation over admissible untried points. Flat feedback explores. Numerical
+fitting/prediction failure rejects the ask explicitly; no silent model fallback.
+The factorization is reused for all predictions in one acquisition. Replaying
+history still refits past acquisitions: this bounded process API does not claim
+persistent-session throughput. Dense GP cost is cubic in observed points for
+fitting and quadratic per prediction; large spaces need separate qualification.

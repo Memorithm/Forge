@@ -31,13 +31,17 @@ pub struct Dimension {
     pub values: Vec<String>,
 }
 
-/// Deterministic baselines. Neither strategy claims adaptive optimizer benefit.
+/// Versioned finite-space proposal policies; grid/random remain unchanged.
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "kebab-case")]
 pub enum Strategy {
     Grid,
     /// StdRng/rand 0.8, shuffled without replacement; first grid point stays first.
     RandomWithoutReplacement,
+    /// Single-objective categorical density-ratio search with measured feedback.
+    AdaptiveTpe,
+    /// Categorical GP lower-confidence-bound search using pinned SciRust numerics.
+    AdaptiveGp,
 }
 
 /// Hard bookkeeping limits; actual execution timeout belongs to the executor.
@@ -213,7 +217,7 @@ pub struct CandidateRecord {
     pub unmeasured_attempts: u16,
 }
 
-/// Derived administrative state. The proposer receives only `generation_view`.
+/// Derived administrative state, never passed wholesale to a proposal policy.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct Snapshot {
     pub candidates: Vec<CandidateRecord>,
@@ -282,7 +286,14 @@ impl SearchSpec {
             .parse::<u64>()
             .map_err(|_| "invalid decimal seed")?;
         if self.schema_version != 1
-            || self.generator_version != "forge-finite-search/v1"
+            || self.generator_version
+                != match self.strategy {
+                    Strategy::AdaptiveTpe => "forge-finite-tpe/v1",
+                    Strategy::AdaptiveGp => "forge-finite-gp/v1",
+                    _ => "forge-finite-search/v1",
+                }
+            || (matches!(self.strategy, Strategy::AdaptiveTpe | Strategy::AdaptiveGp)
+                && external.objectives.len() != 1)
             || seed.to_string() != self.seed
             || !(1..=8).contains(&self.dimensions.len())
             || !(1..=8).contains(&external.objectives.len())
@@ -368,7 +379,7 @@ fn proposals(
     debug_assert_eq!(view.allowed_candidate_dimensions.len(), dims.len());
     let size: usize = dims.iter().map(|d| d.values.len()).product();
     let mut indices: Vec<usize> = (0..size).collect();
-    if strategy == Strategy::RandomWithoutReplacement {
+    if strategy != Strategy::Grid {
         indices[1..].shuffle(&mut StdRng::seed_from_u64(seed));
     }
     indices
@@ -382,6 +393,79 @@ fn proposals(
             point
         })
         .collect()
+}
+
+/// Administrative projection: the model receives categorical coordinates and
+/// eligible scalar measurements only, never oracle/source identities or records.
+fn adaptive_point<'a>(
+    spec: &SearchSpec,
+    points: &'a [BTreeMap<String, String>],
+    state: &Snapshot,
+) -> Result<&'a BTreeMap<String, String>, String> {
+    use crate::scientific_tpe::{select, Observation};
+    let encode = |p: &BTreeMap<String, String>| -> Vec<usize> {
+        spec.dimensions
+            .iter()
+            .map(|d| {
+                d.values
+                    .iter()
+                    .position(|v| p.get(&d.name) == Some(v))
+                    .unwrap()
+            })
+            .collect()
+    };
+    let used: BTreeSet<_> = state
+        .candidates
+        .iter()
+        .map(|c| &c.proposal.parameters)
+        .collect();
+    let available: Vec<_> = points
+        .iter()
+        .filter(|p| {
+            !used.contains(p)
+                && !spec
+                    .forbidden_combinations
+                    .iter()
+                    .any(|c| c.iter().all(|(k, v)| p.get(k) == Some(v)))
+        })
+        .collect();
+    if available.is_empty() {
+        return Err("admissible finite space exhausted".into());
+    }
+    let baseline_qualified = state
+        .candidates
+        .first()
+        .is_some_and(|c| c.status == "measured");
+    let observations: Vec<_> = state
+        .candidates
+        .iter()
+        .filter(|c| baseline_qualified && c.status == "measured" && c.verification.is_some())
+        .filter_map(|c| {
+            c.metrics.as_ref().map(|m| Observation {
+                point: encode(&c.proposal.parameters),
+                loss: if spec.manifest.external_domain.objectives[0].direction
+                    == ObjectiveDirection::Maximize
+                {
+                    -m[0].value
+                } else {
+                    m[0].value
+                },
+            })
+        })
+        .collect();
+    let cardinalities: Vec<_> = spec.dimensions.iter().map(|d| d.values.len()).collect();
+    let encoded: Vec<_> = available.iter().map(|p| encode(p)).collect();
+    let selected = if spec.strategy == Strategy::AdaptiveGp {
+        crate::scientific_gp::select(&encoded, &observations, state.candidates.len())?
+    } else {
+        select(
+            &cardinalities,
+            &encoded,
+            &observations,
+            state.candidates.len(),
+        )
+    };
+    Ok(available[selected])
 }
 
 fn apply(
@@ -400,17 +484,22 @@ fn apply(
             if i >= usize::from(spec.budget.max_proposals) || i >= points.len() {
                 return Err("proposal budget or finite space exhausted".into());
             }
+            let point = if matches!(spec.strategy, Strategy::AdaptiveTpe | Strategy::AdaptiveGp) {
+                adaptive_point(spec, points, state)?
+            } else {
+                &points[i]
+            };
             let proposal = Proposal {
-                candidate_id: digest("forge-scientific-candidate/v1", &(spec_id, &points[i]))?,
+                candidate_id: digest("forge-scientific-candidate/v1", &(spec_id, point))?,
                 ordinal: i as u16,
                 parent_id: None,
                 generator_version: spec.generator_version.clone(),
-                parameters: points[i].clone(),
+                parameters: point.clone(),
             };
             let constraint_rejected = spec
                 .forbidden_combinations
                 .iter()
-                .any(|c| c.iter().all(|(k, v)| points[i].get(k) == Some(v)));
+                .any(|c| c.iter().all(|(k, v)| point.get(k) == Some(v)));
             state.candidates.push(CandidateRecord {
                 proposal: proposal.clone(),
                 status: if constraint_rejected {
