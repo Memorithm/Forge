@@ -187,7 +187,14 @@ fn run_session() -> Result<(), String> {
             .and_then(|_| output.flush())
             .map_err(|e| e.to_string())?;
     }
-    Err("session frame budget exhausted".into())
+    // The last allowed reply is valid. EOF after it is a clean close; any
+    // additional byte exceeds the frame budget and must not be processed.
+    let mut extra = [0u8; 1];
+    if input.read(&mut extra).map_err(|e| e.to_string())? == 0 {
+        Ok(())
+    } else {
+        Err("session frame budget exhausted".into())
+    }
 }
 
 fn main() {

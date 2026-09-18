@@ -81,3 +81,12 @@ for bad in (encode(opened), encode(opened) + b"\n" + encode(opened) + b"\n",
     result = subprocess.run([str(args.worker.resolve()), "--session"], input=bad, capture_output=True, timeout=30)
     assert result.returncode == 21
 print("Persistent session: exact replay projection, receipt identity, framing and stale sequence rejection passed")
+
+inspect_empty = dict(inspect, action=dict(inspect["action"], expected_sequence=0))
+limit_frames = encode(opened) + b"\n" + (encode(inspect_empty) + b"\n") * 4097
+for extra, code in ((b"", 0), (encode(inspect_empty) + b"\n", 21)):
+    result = subprocess.run([str(args.worker.resolve()), "--session"], input=limit_frames + extra,
+                            capture_output=True, timeout=30)
+    assert result.returncode == code, result.stderr
+    assert len(result.stdout.splitlines()) == 4098
+print("Session frame bound: exactly 4098 replies closes cleanly; a 4099th frame is rejected")
