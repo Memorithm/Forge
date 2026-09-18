@@ -1,12 +1,14 @@
 //! Strict bounded stdin/stdout process protocol for scientific ask/tell.
 //! Run with a Request JSON on stdin; errors exit 21 without partial stdout.
 
-use forge_bridge::scientific_ask_tell::{handle, Request};
+use forge_bridge::scientific_ask_tell::{
+    handle, Checkpoint, Command, Request, SearchSession, SearchSpec,
+};
 use serde::de::{self, MapAccess, SeqAccess, Visitor};
-use serde::{Deserialize, Deserializer};
+use serde::{Deserialize, Deserializer, Serialize};
 use serde_json::Value;
 use std::fmt;
-use std::io::{self, Read};
+use std::io::{self, BufRead, Read, Write};
 
 struct Unique(Value);
 impl<'de> Deserialize<'de> for Unique {
@@ -61,9 +63,9 @@ impl<'de> Deserialize<'de> for Unique {
     }
 }
 
-fn parse(bytes: &[u8]) -> Result<Request, String> {
+fn parse<T: serde::de::DeserializeOwned + Serialize>(bytes: &[u8]) -> Result<T, String> {
     let Unique(value) = serde_json::from_slice(bytes).map_err(|e| e.to_string())?;
-    let request: Request = serde_json::from_value(value.clone()).map_err(|e| e.to_string())?;
+    let request: T = serde_json::from_value(value.clone()).map_err(|e| e.to_string())?;
     // Existing external-domain types intentionally accept extensions. This v1
     // wire protocol is closed, including those nested administrative records.
     if serde_json::to_value(&request).map_err(|e| e.to_string())? != value {
@@ -80,19 +82,129 @@ fn run() -> Result<(), String> {
     if bytes.len() > 4 * 1024 * 1024 {
         return Err("search input exceeds 4 MiB".into());
     }
-    let result = handle(parse(&bytes)?)?;
+    let result = handle(parse::<Request>(&bytes)?)?;
     let output = serde_json::to_vec(&result).map_err(|e| e.to_string())?;
     if output.len() > 8 * 1024 * 1024 {
         return Err("search output exceeds 8 MiB".into());
     }
-    use std::io::Write;
     io::stdout()
         .lock()
         .write_all(&output)
         .map_err(|e| e.to_string())
 }
+
+const SESSION_PROTOCOL: &str = "forge-scientific-session/v1";
+
+#[derive(Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Frame {
+    protocol: String,
+    action: Action,
+}
+
+#[derive(Serialize, Deserialize)]
+#[serde(tag = "op", rename_all = "kebab-case", deny_unknown_fields)]
+enum Action {
+    Open {
+        spec: Box<SearchSpec>,
+        checkpoint: Option<Checkpoint>,
+    },
+    Command {
+        spec_sha256: String,
+        expected_sequence: usize,
+        command: Command,
+    },
+    Inspect {
+        spec_sha256: String,
+        expected_sequence: usize,
+    },
+}
+
+fn run_session() -> Result<(), String> {
+    let mut input = io::stdin().lock();
+    let mut output = io::stdout().lock();
+    let mut session: Option<SearchSession> = None;
+    // Inspections consume frames too; a process never accepts an unbounded log.
+    for _ in 0..4098 {
+        let mut raw = Vec::new();
+        let n = input
+            .by_ref()
+            .take(4 * 1024 * 1024 + 1)
+            .read_until(b'\n', &mut raw)
+            .map_err(|e| e.to_string())?;
+        if n == 0 {
+            return if session.is_some() {
+                Ok(())
+            } else {
+                Err("session requires open".into())
+            };
+        }
+        if n > 4 * 1024 * 1024 || raw.last() != Some(&b'\n') {
+            return Err("oversized or unterminated session frame".into());
+        }
+        let frame: Frame = parse(&raw)?;
+        if frame.protocol != SESSION_PROTOCOL {
+            return Err("unsupported session protocol".into());
+        }
+        let result = match frame.action {
+            Action::Open { spec, checkpoint } => {
+                if session.is_some() {
+                    return Err("session already open".into());
+                }
+                let mut opened = SearchSession::restore(*spec, checkpoint)?;
+                let result = serde_json::json!({"kind":"opened", "response":opened.response()});
+                session = Some(opened);
+                result
+            }
+            Action::Command {
+                spec_sha256,
+                expected_sequence,
+                command,
+            } => {
+                let active = session.as_mut().ok_or("session requires open")?;
+                let receipt = active.submit(&spec_sha256, expected_sequence, command)?;
+                serde_json::json!({"kind":"receipt", "spec_sha256":active.spec_sha256(),
+                                  "sequence":active.sequence(), "receipt":receipt})
+            }
+            Action::Inspect {
+                spec_sha256,
+                expected_sequence,
+            } => {
+                let active = session.as_mut().ok_or("session requires open")?;
+                active.check_position(&spec_sha256, expected_sequence)?;
+                serde_json::json!({"kind":"snapshot", "response":active.response()})
+            }
+        };
+        let bytes =
+            serde_json::to_vec(&serde_json::json!({"protocol":SESSION_PROTOCOL, "result":result}))
+                .map_err(|e| e.to_string())?;
+        if bytes.len() > 8 * 1024 * 1024 {
+            return Err("session output exceeds 8 MiB".into());
+        }
+        output
+            .write_all(&bytes)
+            .and_then(|_| output.write_all(b"\n"))
+            .and_then(|_| output.flush())
+            .map_err(|e| e.to_string())?;
+    }
+    // The last allowed reply is valid. EOF after it is a clean close; any
+    // additional byte exceeds the frame budget and must not be processed.
+    let mut extra = [0u8; 1];
+    if input.read(&mut extra).map_err(|e| e.to_string())? == 0 {
+        Ok(())
+    } else {
+        Err("session frame budget exhausted".into())
+    }
+}
+
 fn main() {
-    if let Err(error) = run() {
+    let args: Vec<_> = std::env::args().skip(1).collect();
+    let result = match args.as_slice() {
+        [] => run(),
+        [arg] if arg == "--session" => run_session(),
+        _ => Err("expected no arguments or --session".into()),
+    };
+    if let Err(error) = result {
         eprintln!("scientific search contract: {error}");
         std::process::exit(21);
     }
@@ -109,9 +221,9 @@ mod tests {
             r#"{"spec":{"seed":1e999}}"#,
             "NaN",
         ] {
-            assert!(parse(raw.as_bytes()).is_err());
+            assert!(parse::<Request>(raw.as_bytes()).is_err());
         }
         let deep = format!("{}0{}", "[".repeat(130), "]".repeat(130));
-        assert!(parse(deep.as_bytes()).is_err());
+        assert!(parse::<Request>(deep.as_bytes()).is_err());
     }
 }
