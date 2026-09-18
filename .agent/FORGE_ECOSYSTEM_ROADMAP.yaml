@@ -379,3 +379,28 @@ adaptive_search_results_2026_09_18:
     - observed_Forge_subprocess_replay_adapter_cost_remains_substantially_higher_than_inprocess_Optuna
     - sixth_task_baseline_was_already_optimal_retained_as_documented_design_limitation_not_discriminating_evidence
   interpretation: descriptive_public_Development_only_no_general_superiority_confirmation_GPU_or_maturity_promotion
+
+persistent_search_2026_09_18:
+  status: implemented_protocol_published_before_comparison
+  forge_pull_request: https://github.com/Memorithm/Forge/pull/41
+  forge_source: 83c8c572a692016fb786e661c47a249112b6cadd
+  tdi_pull_request: https://github.com/Memorithm/TDI/pull/503
+  tdi_protocol_source: d7c0714267e4428f386f2661f31ab825fbe51552
+  contracts: [forge-scientific-session/v1, forge-finite-tpe-early/v1]
+  implemented:
+    - one_Rust_transition_per_command_with_replay_equivalent_state_and_compact_receipts
+    - bounded_frames_history_idempotency_and_expected_log_position
+    - TDI_immutable_fsynced_command_receipt_journal_and_checkpoint_reconstruction
+    - real_active_permit_crash_recovery_without_new_reservation_or_automatic_execution_redispatch
+    - generic_TDI_pidfd_exit_notification_with_wait4_measurements_and_poll_fallback
+    - opt_in_early_TPE_and_equally_early_Optuna_multivariate_comparator
+  fixed_evaluation:
+    - nine_public_tasks_eight_discriminating_no_protected_or_final_stage
+    - budgets_32_and_64_twenty_seeds_eight_arms_46080_and_92160_evaluations
+    - separate_3840_evaluation_paired_transport_comparison_requires_identical_trajectories
+    - publish_all_cases_no_post_result_tuning_or_default_policy_promotion
+  before_comparison_evidence:
+    - 58_Forge_bridge_tests_rustfmt_clippy_and_actual_process_checks_pass
+    - 11_TDI_methodology_tests_and_real_session_replay_historical_binary_crash_corruption_bounds_and_pidfd_poll_checks_pass
+  pending: [complete_comparison, exact_final_head_CI, material_reviews, merge]
+  authority: no_universal_superiority_model_GPU_confirmatory_production_or_maturity_promotion
