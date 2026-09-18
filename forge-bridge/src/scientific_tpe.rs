@@ -52,9 +52,37 @@ pub(crate) fn select(
     observations: &[Observation],
     ordinal: usize,
 ) -> usize {
+    select_with_startup(sizes, available, observations, ordinal, 10)
+}
+
+/// Opt-in early-feedback policy, versioned separately from the historical TPE.
+/// It changes only the startup threshold; all density and exploration constants
+/// remain fixed. Sparse evidence can mislead it, so no default promotion follows.
+pub(crate) fn select_early(
+    sizes: &[usize],
+    available: &[Vec<usize>],
+    observations: &[Observation],
+    ordinal: usize,
+) -> usize {
+    select_with_startup(
+        sizes,
+        available,
+        observations,
+        ordinal,
+        (2 * sizes.len()).clamp(4, 10),
+    )
+}
+
+fn select_with_startup(
+    sizes: &[usize],
+    available: &[Vec<usize>],
+    observations: &[Observation],
+    ordinal: usize,
+    startup: usize,
+) -> usize {
     // Ten successful observations before fitting; every fifth proposal explores.
     // Missing/failed measurements never become bad-score pseudo-observations.
-    if observations.len() < 10 || ordinal.is_multiple_of(5) {
+    if observations.len() < startup || ordinal.is_multiple_of(5) {
         return 0;
     }
     let mut ranked: Vec<_> = observations.iter().collect();
@@ -80,6 +108,20 @@ pub(crate) fn select(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn early_policy_uses_feedback_before_legacy_startup_and_preserves_exploration() {
+        let points = vec![vec![0], vec![1]];
+        let rows: Vec<_> = (0..4)
+            .map(|i| Observation {
+                point: vec![i % 2],
+                loss: (1 - i % 2) as f64,
+            })
+            .collect();
+        assert_eq!(select(&[2], &points, &rows, 4), 0);
+        assert_eq!(select_early(&[2], &points, &rows, 4), 1);
+        assert_eq!(select_early(&[2], &points, &rows, 5), 0);
+    }
 
     #[test]
     fn feedback_changes_acquisition_and_flat_feedback_explores() {

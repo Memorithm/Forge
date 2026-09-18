@@ -40,6 +40,8 @@ pub enum Strategy {
     RandomWithoutReplacement,
     /// Single-objective categorical density-ratio search with measured feedback.
     AdaptiveTpe,
+    /// Earlier categorical feedback after max(4, min(10, 2 * dimensions)) observations.
+    AdaptiveTpeEarly,
     /// Categorical GP lower-confidence-bound search using pinned SciRust numerics.
     AdaptiveGp,
 }
@@ -248,6 +250,124 @@ pub struct Response {
     pub generation_view: ScientificGenerationViewV1,
 }
 
+/// In-memory execution of the same bounded command log. Restore replays the
+/// checkpoint once; subsequent commands apply exactly one transition. The
+/// caller still owns durable checkpointing before acting on stage permits.
+pub struct SearchSession {
+    spec: SearchSpec,
+    points: Vec<BTreeMap<String, String>>,
+    response: Response,
+    seen: BTreeMap<String, usize>,
+    encoded_bytes: usize,
+}
+
+impl SearchSession {
+    /// Validate and replay an optional checkpoint. No derived state is trusted.
+    pub fn restore(spec: SearchSpec, checkpoint: Option<Checkpoint>) -> Result<Self, String> {
+        let response = handle(Request {
+            spec: spec.clone(),
+            checkpoint,
+            command: None,
+        })?;
+        let encoded_bytes = serde_json::to_vec(&(&spec, &response.checkpoint))
+            .map_err(|e| e.to_string())?
+            .len();
+        if encoded_bytes > 3 * 1024 * 1024 {
+            return Err("session history exceeds 3 MiB".into());
+        }
+        let points = proposals(
+            &response.generation_view,
+            &spec.dimensions,
+            spec.strategy,
+            spec.seed.parse().map_err(|_| "seed")?,
+        );
+        let mut seen = BTreeMap::new();
+        for (i, c) in response.checkpoint.commands.iter().enumerate() {
+            seen.entry(c.request_id.clone()).or_insert(i);
+        }
+        Ok(Self {
+            spec,
+            points,
+            response,
+            seen,
+            encoded_bytes,
+        })
+    }
+
+    pub fn spec_sha256(&self) -> &str {
+        &self.response.checkpoint.spec_sha256
+    }
+
+    pub fn sequence(&self) -> usize {
+        self.response.checkpoint.commands.len()
+    }
+
+    /// Append one command only at the caller's expected log position. A stale
+    /// position is a transport error, not an implicit retry. Semantic rejection
+    /// and idempotency receipts retain the original checkpoint semantics.
+    pub fn submit(
+        &mut self,
+        spec_sha256: &str,
+        expected_sequence: usize,
+        command: Command,
+    ) -> Result<Receipt, String> {
+        self.check_position(spec_sha256, expected_sequence)?;
+        if !label(&command.request_id) || self.sequence() >= 2048 {
+            return Err("invalid command key or full command history".into());
+        }
+        let bytes = serde_json::to_vec(&command)
+            .map_err(|e| e.to_string())?
+            .len()
+            + 1;
+        if self.encoded_bytes + bytes > 3 * 1024 * 1024 {
+            return Err("session history exceeds 3 MiB".into());
+        }
+        let receipt = if let Some(&first) = self.seen.get(&command.request_id) {
+            if self.response.checkpoint.commands[first] == command {
+                Receipt::Duplicate {
+                    original_index: first,
+                }
+            } else {
+                Receipt::Rejected {
+                    reason: "request key reused with different contents".into(),
+                }
+            }
+        } else {
+            self.seen
+                .insert(command.request_id.clone(), self.sequence());
+            apply(
+                &self.spec,
+                self.spec_sha256().to_owned().as_str(),
+                &self.points,
+                &mut self.response.snapshot,
+                &command.operation,
+            )
+            .unwrap_or_else(|reason| Receipt::Rejected { reason })
+        };
+        self.response.checkpoint.commands.push(command);
+        self.response.snapshot.receipts.push(receipt.clone());
+        self.encoded_bytes += bytes;
+        Ok(receipt)
+    }
+
+    pub fn check_position(
+        &self,
+        spec_sha256: &str,
+        expected_sequence: usize,
+    ) -> Result<(), String> {
+        if self.spec_sha256() != spec_sha256 || self.sequence() != expected_sequence {
+            return Err("session specification or log position mismatch".into());
+        }
+        Ok(())
+    }
+
+    /// Full portable checkpoint and current projection, for inspection/export.
+    pub fn response(&mut self) -> Response {
+        project(&self.spec, &mut self.response.snapshot);
+        self.response.clone()
+    }
+}
+
 fn digest<T: Serialize>(domain: &str, value: &T) -> Result<String, String> {
     let mut hash = Sha256::new();
     hash.update(domain.as_bytes());
@@ -289,11 +409,14 @@ impl SearchSpec {
             || self.generator_version
                 != match self.strategy {
                     Strategy::AdaptiveTpe => "forge-finite-tpe/v1",
+                    Strategy::AdaptiveTpeEarly => "forge-finite-tpe-early/v1",
                     Strategy::AdaptiveGp => "forge-finite-gp/v1",
                     _ => "forge-finite-search/v1",
                 }
-            || (matches!(self.strategy, Strategy::AdaptiveTpe | Strategy::AdaptiveGp)
-                && external.objectives.len() != 1)
+            || (matches!(
+                self.strategy,
+                Strategy::AdaptiveTpe | Strategy::AdaptiveTpeEarly | Strategy::AdaptiveGp
+            ) && external.objectives.len() != 1)
             || seed.to_string() != self.seed
             || !(1..=8).contains(&self.dimensions.len())
             || !(1..=8).contains(&external.objectives.len())
@@ -457,6 +580,13 @@ fn adaptive_point<'a>(
     let encoded: Vec<_> = available.iter().map(|p| encode(p)).collect();
     let selected = if spec.strategy == Strategy::AdaptiveGp {
         crate::scientific_gp::select(&encoded, &observations, state.candidates.len())?
+    } else if spec.strategy == Strategy::AdaptiveTpeEarly {
+        crate::scientific_tpe::select_early(
+            &cardinalities,
+            &encoded,
+            &observations,
+            state.candidates.len(),
+        )
     } else {
         select(
             &cardinalities,
@@ -484,7 +614,10 @@ fn apply(
             if i >= usize::from(spec.budget.max_proposals) || i >= points.len() {
                 return Err("proposal budget or finite space exhausted".into());
             }
-            let point = if matches!(spec.strategy, Strategy::AdaptiveTpe | Strategy::AdaptiveGp) {
+            let point = if matches!(
+                spec.strategy,
+                Strategy::AdaptiveTpe | Strategy::AdaptiveTpeEarly | Strategy::AdaptiveGp
+            ) {
                 adaptive_point(spec, points, state)?
             } else {
                 &points[i]
@@ -777,6 +910,16 @@ pub fn handle(request: Request) -> Result<Response, String> {
         };
         state.receipts.push(receipt);
     }
+    project(spec, &mut state);
+    Ok(Response {
+        schema_version: 1,
+        checkpoint,
+        snapshot: state,
+        generation_view,
+    })
+}
+
+fn project(spec: &SearchSpec, state: &mut Snapshot) {
     state.baseline_qualified = state
         .candidates
         .first()
@@ -810,10 +953,4 @@ pub fn handle(request: Request) -> Result<Response, String> {
             .map(|(c, _)| c.proposal.candidate_id.clone())
             .collect();
     }
-    Ok(Response {
-        schema_version: 1,
-        checkpoint,
-        snapshot: state,
-        generation_view,
-    })
 }

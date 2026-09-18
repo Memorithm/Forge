@@ -24,6 +24,7 @@ struct Driver {
     spec: SearchSpec,
     response: Response,
     sequence: u32,
+    session: SearchSession,
 }
 impl Driver {
     fn new(spec: SearchSpec) -> Self {
@@ -34,6 +35,7 @@ impl Driver {
         })
         .unwrap();
         Self {
+            session: SearchSession::restore(spec.clone(), None).unwrap(),
             spec,
             response,
             sequence: 0,
@@ -50,9 +52,22 @@ impl Driver {
         self.response = handle(Request {
             spec: self.spec.clone(),
             checkpoint: Some(self.response.checkpoint.clone()),
-            command: Some(command),
+            command: Some(command.clone()),
         })
         .unwrap();
+        let id = self.session.spec_sha256().to_owned();
+        let receipt = self
+            .session
+            .submit(&id, self.session.sequence(), command)
+            .unwrap();
+        assert_eq!(Some(&receipt), self.response.snapshot.receipts.last());
+        assert_eq!(self.session.response(), self.response);
+        if self.session.sequence().is_multiple_of(11) {
+            self.session =
+                SearchSession::restore(self.spec.clone(), Some(self.response.checkpoint.clone()))
+                    .unwrap();
+            assert_eq!(self.session.response(), self.response);
+        }
         self.response.snapshot.receipts.last().unwrap().clone()
     }
     fn ask(&mut self) -> Proposal {
@@ -435,7 +450,40 @@ fn adaptive_spec() -> SearchSpec {
 #[test]
 fn adaptive_replay_unique_constraints_and_direction_symmetry() {
     adaptive_replay_for(Strategy::AdaptiveTpe, "forge-finite-tpe/v1");
+    adaptive_replay_for(Strategy::AdaptiveTpeEarly, "forge-finite-tpe-early/v1");
     adaptive_replay_for(Strategy::AdaptiveGp, "forge-finite-gp/v1");
+}
+
+#[test]
+fn session_identity_position_and_size_fail_without_mutation() {
+    let mut session = SearchSession::restore(spec(), None).unwrap();
+    let initial = session.response();
+    let id = session.spec_sha256().to_owned();
+    let command = Command {
+        request_id: "one".into(),
+        operation: Operation::Ask,
+    };
+    assert!(session.submit(&"0".repeat(64), 0, command.clone()).is_err());
+    assert!(session.submit(&id, 1, command.clone()).is_err());
+    assert_eq!(session.response(), initial);
+    let huge = Command {
+        request_id: "huge".into(),
+        operation: Operation::Abandon {
+            candidate_id: "c".into(),
+            reason: "a".repeat(3 * 1024 * 1024),
+        },
+    };
+    assert!(session.submit(&id, 0, huge).is_err());
+    assert_eq!(session.response(), initial);
+    session.submit(&id, 0, command.clone()).unwrap();
+    let once = session.response();
+    assert!(session.submit(&id, 0, command.clone()).is_err());
+    assert_eq!(session.response(), once);
+    assert_eq!(
+        session.submit(&id, 1, command).unwrap(),
+        Receipt::Duplicate { original_index: 0 }
+    );
+    assert_eq!(session.response().snapshot.candidates.len(), 1);
 }
 
 fn adaptive_replay_for(strategy: Strategy, version: &str) {

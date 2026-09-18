@@ -162,3 +162,45 @@ The factorization is reused for all predictions in one acquisition. Replaying
 history still refits past acquisitions: this bounded process API does not claim
 persistent-session throughput. Dense GP cost is cubic in observed points for
 fitting and quadratic per prediction; large spaces need separate qualification.
+# Persistent sessions and early feedback (2026-09-18)
+
+The original one-request executable and `forge-finite-tpe/v1` / `forge-finite-gp/v1`
+policies remain compatible. `scientific_search --session` adds newline-delimited,
+closed JSON frames using `forge-scientific-session/v1`:
+
+```json
+{"protocol":"forge-scientific-session/v1","action":{"op":"open","spec":{},"checkpoint":null}}
+{"protocol":"forge-scientific-session/v1","action":{"op":"command","spec_sha256":"<opened checkpoint identity>","expected_sequence":0,"command":{"request_id":"one","operation":{"op":"ask"}}}}
+{"protocol":"forge-scientific-session/v1","action":{"op":"inspect","spec_sha256":"<opened checkpoint identity>","expected_sequence":1}}
+```
+
+The first `spec` above is a placeholder for the complete existing SearchSpec.
+Open is allowed once. Open/inspect return `result: {kind, response}` with the
+original complete Response; command returns `result: {kind: "receipt",
+spec_sha256, sequence, receipt}`. Every reply also carries the protocol string.
+EOF closes the session. Invalid frames terminate with exit 21; earlier replies
+remain valid, but no reply authorizes external execution before persistence.
+
+Each process keeps one validated specification, point order, idempotency map and
+derived state. Restore replays the portable checkpoint once. Each new command
+applies only its own transition. No fitted numerical model is checkpointed.
+Full inspection computes the same baseline/Pareto projection as replay.
+
+Limits: 4 MiB input frame, 8 MiB output frame, 3 MiB cumulative encoded history,
+2,048 commands and 4,098 total frames. Specifications and expected log positions
+must match. Semantic rejections and duplicate receipts count as log entries;
+transport errors do not. A duplicate never repeats a reservation or external work.
+
+Consumers must persist the initial spec/checkpoint and each acknowledged command
+before acting on any permit. A durable contiguous command journal can reconstruct
+the same checkpoint without rewriting full history. After interruption, restore
+that checkpoint and reconcile any outstanding external stage; do not redispatch
+it merely because a reply was lost. This is a trusted local control process, not
+a sandbox, a distributed coordinator or a power-loss durability certification.
+
+An opt-in `adaptive-tpe-early` strategy uses `forge-finite-tpe-early/v1`.
+It starts fitting after `max(4, min(10, 2 * dimension_count))` eligible successful
+measurements. Density, ranking, categorical semantics and every-fifth global
+exploration are identical to the original TPE. Earlier feedback can also mislead
+search: this variant is separately identified and does not replace the default.
+TDI compares it against both default and equally early Optuna multivariate TPE.

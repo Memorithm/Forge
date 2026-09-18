@@ -48,6 +48,7 @@ print("Forge process: deterministic replay, exact duplicates, nested closed sche
 
 # Version identity is explicit on the actual executable protocol.
 for strategy, version in (("adaptive-tpe", "forge-finite-tpe/v1"),
+                          ("adaptive-tpe-early", "forge-finite-tpe-early/v1"),
                           ("adaptive-gp", "forge-finite-gp/v1")):
     adaptive = copy.deepcopy(fixture)
     adaptive["spec"]["strategy"] = strategy
@@ -60,3 +61,23 @@ for strategy, version in (("adaptive-tpe", "forge-finite-tpe/v1"),
     adaptive["spec"]["generator_version"] = "forge-finite-search/v1"
     call(encode(adaptive), False)
 print("Adaptive TPE and SciRust GP: explicit version identity and replay passed")
+
+protocol = "forge-scientific-session/v1"
+opened = {"protocol": protocol, "action": {"op": "open", "spec": fixture["spec"], "checkpoint": None}}
+command = {"protocol": protocol, "action": {"op": "command", "spec_sha256": first["checkpoint"]["spec_sha256"],
+           "expected_sequence": 0, "command": fixture["command"]}}
+inspect = {"protocol": protocol, "action": {"op": "inspect", "spec_sha256": first["checkpoint"]["spec_sha256"],
+           "expected_sequence": 1}}
+raw = b"\n".join(map(encode, (opened, command, inspect))) + b"\n"
+result = subprocess.run([str(args.worker.resolve()), "--session"], input=raw, capture_output=True, timeout=30)
+assert result.returncode == 0, result.stderr
+responses = [json.loads(line) for line in result.stdout.splitlines()]
+assert len(responses) == 3
+assert all(r["protocol"] == protocol for r in responses)
+assert responses[1]["result"]["receipt"] == first["snapshot"]["receipts"][-1]
+assert responses[2]["result"]["response"] == first
+for bad in (encode(opened), encode(opened) + b"\n" + encode(opened) + b"\n",
+            encode(opened) + b"\n" + encode(dict(command, action=dict(command["action"], expected_sequence=1))) + b"\n"):
+    result = subprocess.run([str(args.worker.resolve()), "--session"], input=bad, capture_output=True, timeout=30)
+    assert result.returncode == 21
+print("Persistent session: exact replay projection, receipt identity, framing and stale sequence rejection passed")
