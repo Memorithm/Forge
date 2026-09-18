@@ -54,7 +54,7 @@ pub(crate) fn select(
 ) -> usize {
     // Ten successful observations before fitting; every fifth proposal explores.
     // Missing/failed measurements never become bad-score pseudo-observations.
-    if observations.len() < 10 || ordinal % 5 == 0 {
+    if observations.len() < 10 || ordinal.is_multiple_of(5) {
         return 0;
     }
     let mut ranked: Vec<_> = observations.iter().collect();

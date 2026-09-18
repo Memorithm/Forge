@@ -25,7 +25,7 @@ pub(crate) fn select(
     observations: &[Observation],
     ordinal: usize,
 ) -> Result<usize, String> {
-    if observations.len() < 10 || ordinal % 5 == 0 {
+    if observations.len() < 10 || ordinal.is_multiple_of(5) {
         return Ok(0);
     }
     // Scale before centering to avoid overflow even for finite +/- f64::MAX.
