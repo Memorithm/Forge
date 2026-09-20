@@ -13,7 +13,7 @@ Forge génère ou mute des candidats, les compile, vérifie leur correction dans
 - **forge-worker** — worker TCP distribué pour l'évaluation distante de candidats.
 - **forge-cli** — analytics du registre Sled et inspection des checkpoints.
 - **forge-bridge** — façade Rust typée pour intégrer Forge à d'autres briques ; aucun service HTTP n'est actuellement fourni par ce crate.
-- **forge-domains** — domaines légers/de démonstration séparés du noyau, dont un modèle Tensor Train paramétrique.
+- **forge-domains** — domaines légers/de démonstration séparés du noyau, dont Tensor Train et l'adaptateur borné de recherche de topologie booléenne SML.
 
 Le dépôt est un workspace Cargo unique ; `Cargo.lock` à la racine est la source de vérité pour le workspace.
 
@@ -24,6 +24,7 @@ Le dépôt est un workspace Cargo unique ; `Cargo.lock` à la racine est la sour
 | `simd_gemm` | fonction Rust GEMM | latence Criterion avec `target-cpu=native` |
 | `cuda_gemm` | kernel CUDA natif | latence CUDA Events + taille instructionnelle PTX |
 | `low_rank_compression` | `compress` / `reconstruct` Rust | erreur L2, latence, paramètres stockés |
+| `sml_topology_v1` | DAG booléen borné fourni par contrat externe | erreur oracle, bits appris, métadonnées de câblage |
 
 Chaque domaine implémente le trait `Domain`. La porte `verify` est séparée de `measure` afin qu'un candidat rapide mais incorrect ne puisse pas obtenir un bon score de performance.
 

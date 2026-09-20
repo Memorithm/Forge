@@ -1,0 +1,51 @@
+name: SML topology domain
+
+on:
+  pull_request:
+    paths:
+      - 'forge-domains/**'
+      - 'forge-core/**'
+      - 'docs/SML_TOPOLOGY_DOMAIN_V1.md'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - '.github/workflows/sml-topology.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'forge-domains/**'
+      - 'forge-core/**'
+      - 'docs/SML_TOPOLOGY_DOMAIN_V1.md'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - '.github/workflows/sml-topology.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sml-topology-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  sml-topology:
+    runs-on: [self-hosted]
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@fa04a1451ff1842e2626ccb99004d0195b455a88 # master
+        with:
+          toolchain: stable
+          components: rustfmt, clippy
+      - name: Format
+        run: cargo fmt --all -- --check
+      - name: Check forge-domains
+        run: cargo check -p forge-domains --all-targets
+      - name: Clippy forge-domains
+        run: cargo clippy -p forge-domains --all-targets -- -D warnings
+      - name: Test SML topology domain
+        run: cargo test -p forge-domains sml_topology -- --nocapture
+      - name: Run isolated Forge campaign smoke
+        run: cargo test -p forge-domains --test sml_topology_campaign -- --ignored --test-threads=1 --nocapture
