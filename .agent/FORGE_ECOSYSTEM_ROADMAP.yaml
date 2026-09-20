@@ -1,7 +1,7 @@
 schema_version: 1
 kind: forge_ecosystem_agent_roadmap
 status: active
-last_updated: "2026-09-04"
+last_updated: "2026-09-20"
 repository: Memorithm/forge
 intended_consumer: autonomous_coding_agent
 merge_policy: never_merge_this_file_to_default_branch_unless_user_explicitly_requests
@@ -404,3 +404,32 @@ persistent_search_2026_09_18:
     - 11_TDI_methodology_tests_and_real_session_replay_historical_binary_crash_corruption_bounds_and_pidfd_poll_checks_pass
   pending: [complete_comparison, exact_final_head_CI, material_reviews, merge]
   authority: no_universal_superiority_model_GPU_confirmatory_production_or_maturity_promotion
+
+
+sml_topology_domain_2026_09_20:
+  status: merged_exact_head_and_required_CI_green
+  contract: sml-topology/v1
+  forge_pull_request: https://github.com/Memorithm/Forge/pull/42
+  qualified_head: b8774b508ea2163c7aeafd7aed4dffc293c06291
+  merge_commit: 6ea4844311a5246bfe57fc3795abe3579b643cf0
+  qualification:
+    - CI_run_217_success_on_exact_head
+    - SML_topology_domain_run_2_success_on_exact_head
+    - self_hosted_ARM64_format_check_clippy_unit_tests_and_isolated_campaign_smoke_passed
+    - Forge_final_holdout_path_executed_in_isolated_campaign_smoke
+  ownership:
+    oracle_bounds_baseline_interpretation_and_final_promotion: Memorithm/SML-GENIUS
+    candidate_generation_mutation_verify_measure_pareto_and_holdout_execution: Memorithm/Forge
+  contract_rules:
+    - seed_and_mutation_use_structural_bounds_only_and_do_not_read_oracle_values
+    - normal_trials_measure_fixed_development_rows_only
+    - final_generation_u64_MAX_trial_measures_disjoint_holdout_rows_only
+    - verify_rejects_invalid_forward_or_cyclic_references_before_measure
+    - objectives_separate_oracle_error_learned_Boolean_bits_and_wiring_metadata
+    - candidate_is_bounded_data_not_generated_native_code
+    - destination_requalification_is_required_before_candidate_promotion
+  limitations:
+    - no_SML_model_quality_or_25B_scaling_claim
+    - no_hardware_performance_claim
+    - no_FG4_FGML0_or_ML_5_of_5_phase_promotion
+    - no_hostile_code_sandbox_claim_or_requirement_for_this_data_only_candidate_domain
