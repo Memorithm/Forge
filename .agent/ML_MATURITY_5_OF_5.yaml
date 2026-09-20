@@ -1,7 +1,7 @@
 schema_version: 1
 kind: memorithm_ml_maturity_program
 status: active
-last_updated: "2026-09-04"
+last_updated: "2026-09-20"
 repository: Memorithm/forge
 objective: >-
   Raise Forge's contribution to ecosystem ML maturity to 5/5 as the trusted
@@ -20,6 +20,19 @@ score_policy:
     - optimizing_only_microbenchmarks_when_task_quality_is_part_of_the_contract
     - sharing_persistent_cache_across_incompatible_hardware_or_toolchains
 verified_slices:
+  - id: SML_topology_domain_v1
+    status: complete_narrow_slice
+    contract: sml-topology/v1
+    pull_request: 42
+    final_exact_head: b8774b508ea2163c7aeafd7aed4dffc293c06291
+    merge_commit: 6ea4844311a5246bfe57fc3795abe3579b643cf0
+    required_CI:
+      - CI_217_success
+      - SML_topology_domain_2_success
+    scope: >-
+      Publishes a bounded data-only Boolean DAG search domain with a disjoint
+      development/final-holdout split and explicit destination-owned promotion.
+      It does not by itself complete FGML0, FGML1, FGML2, FGML3, FGML4 or ML 5/5.
   - id: SOUP_posttrain_process_runner_v1
     status: complete
     pull_request: 26
