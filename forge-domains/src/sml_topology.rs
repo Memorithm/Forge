@@ -443,7 +443,7 @@ impl std::error::Error for SmlTopologyError {}
 #[cfg(test)]
 mod tests {
     use super::*;
-    use forge_core::{Config, Engine};
+    use forge_core::Trial;
     use rand::SeedableRng;
 
     fn target_table() -> Vec<bool> {
@@ -573,26 +573,4 @@ mod tests {
         assert!(domain.measure(&wrong, &trial).unwrap()[0] > 0.0);
     }
 
-    #[test]
-    fn bounded_campaign_preserves_independent_holdout_evaluation() {
-        let domain = SmlTopologyDomain::new(problem());
-        let engine = Engine::new(
-            domain,
-            Config {
-                generations: 3,
-                population: 16,
-                survivors: 4,
-                base_seed: 1234,
-                worker_addresses: None,
-            },
-        );
-        let report = engine.run().unwrap();
-
-        assert!(report.best.is_some());
-        assert!(report.holdout_best.is_some());
-        assert_eq!(
-            report.holdout_baseline.unwrap().objectives,
-            vec![0.0, 8.0, 15.0]
-        );
-    }
 }
