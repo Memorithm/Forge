@@ -46,3 +46,5 @@ jobs:
         run: cargo clippy -p forge-domains --all-targets -- -D warnings
       - name: Test SML topology domain
         run: cargo test -p forge-domains sml_topology -- --nocapture
+      - name: Run isolated Forge campaign smoke
+        run: cargo test -p forge-domains --test sml_topology_campaign -- --ignored --test-threads=1 --nocapture
