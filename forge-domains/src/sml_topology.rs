@@ -443,7 +443,6 @@ impl std::error::Error for SmlTopologyError {}
 #[cfg(test)]
 mod tests {
     use super::*;
-    use forge_core::Trial;
     use rand::SeedableRng;
 
     fn target_table() -> Vec<bool> {
