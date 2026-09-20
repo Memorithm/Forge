@@ -209,8 +209,8 @@ impl SmlTopologyProblem {
         let reachable = reachable_gate_count(candidate, self.input_count)?;
         let reference_bits = bits_required(self.input_count as usize + candidate.gates.len());
         let learned_boolean_bits = reachable as u64 * 4;
-        let wiring_metadata_bits = reachable as u64 * 2 * reference_bits as u64
-            + reference_bits as u64;
+        let wiring_metadata_bits =
+            reachable as u64 * 2 * reference_bits as u64 + reference_bits as u64;
 
         Ok(vec![
             incorrect as f64 / rows.len() as f64,
@@ -265,11 +265,7 @@ impl Domain for SmlTopologyDomain {
         self.random_candidate(rng)
     }
 
-    fn mutate(
-        &self,
-        rng: &mut StdRng,
-        parents: &[&Self::Cand],
-    ) -> ForgeResult<Self::Cand> {
+    fn mutate(&self, rng: &mut StdRng, parents: &[&Self::Cand]) -> ForgeResult<Self::Cand> {
         // Mutation intentionally has no oracle access.
         let mut child = if parents.is_empty() {
             self.random_candidate(rng)
@@ -423,12 +419,25 @@ fn bits_required(cardinality: usize) -> u32 {
 pub enum SmlTopologyError {
     InputCount(u8),
     MaxGates(u8),
-    TruthTableLength { expected: usize, actual: usize },
+    TruthTableLength {
+        expected: usize,
+        actual: usize,
+    },
     EmptyPartition,
-    GateCount { expected: usize, actual: usize },
+    GateCount {
+        expected: usize,
+        actual: usize,
+    },
     TruthTableCode(u8),
-    ForwardOrInvalidSource { gate: usize, source: u16, limit: usize },
-    OutputSource { source: u16, limit: usize },
+    ForwardOrInvalidSource {
+        gate: usize,
+        source: u16,
+        limit: usize,
+    },
+    OutputSource {
+        source: u16,
+        limit: usize,
+    },
     GateValue(usize),
 }
 
@@ -510,7 +519,9 @@ mod tests {
         };
 
         assert_eq!(
-            problem.evaluate_candidate(&candidate, &development).unwrap(),
+            problem
+                .evaluate_candidate(&candidate, &development)
+                .unwrap(),
             vec![0.0, 8.0, 15.0]
         );
         assert_eq!(
@@ -571,5 +582,4 @@ mod tests {
         assert!(domain.verify(&wrong, &trial).unwrap());
         assert!(domain.measure(&wrong, &trial).unwrap()[0] > 0.0);
     }
-
 }
