@@ -44,3 +44,7 @@ Required CI must be green on the exact PR head before merge. A 5/5 maturity clai
 Reread the roadmap and applicable overlays at every session start, before new security/distributed/domain phases, before cross-repository work, after strategy/trust/ML-priority changes, and before promotion or merge decisions.
 
 Do not merge the roadmap or ML/research overlays themselves into `main` unless the user explicitly requests it.
+
+## Mandatory BANC v888 topology-search bootstrap
+
+For any connectome-derived sparse recurrent topology search, SML CSP topology work, lesion-aware graph search, or FLAT sparse-admission topology search, also read [`docs/V888_CONNECTOME_BOOTSTRAP.md`](docs/V888_CONNECTOME_BOOTSTRAP.md). This programme is BANC v888-only, keeps raw connectome data outside Forge, and uses CPU/WGPU/open portable execution for new work; existing CUDA domains are not the implementation path for the V888 programme.
