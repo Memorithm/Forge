@@ -433,3 +433,29 @@ sml_topology_domain_2026_09_20:
     - no_hardware_performance_claim
     - no_FG4_FGML0_or_ML_5_of_5_phase_promotion
     - no_hostile_code_sandbox_claim_or_requirement_for_this_data_only_candidate_domain
+
+v888_connectome_topology_program:
+  status: active_user_directed_2026_09_21
+  source_scope:
+    connectome: FlyWire_BANC_v888_only
+    raw_dataset_in_repository: false
+  ownership:
+    Forge: bounded_execution_driven_topology_search
+    SciRust: graph_sparse_event_primitives
+    SML_GENIUS: destination_model_semantics_and_promotion
+    TDI: independent_scientific_evaluation
+    FLAT_ATTENTION: sparse_attention_semantics
+  ordered_bootstrap:
+    - F_V888_0_domain_contract
+    - F_V888_1_seed_populations
+    - F_V888_2_bounded_mutation_operators
+    - F_V888_3_independent_destination_verification
+    - F_V888_4_multi_objective_measurement
+    - F_V888_5_matched_control_search
+    - F_V888_6_lesion_aware_search
+    - F_V888_7_portable_CPU_WGPU_evaluation
+    - F_V888_8_SML_GENIUS_promotion_lane
+    - F_V888_9_FLAT_sparse_routing_lane
+    - F_V888_10_topology_kernel_cosearch_boundary
+  nvidia_dependency_for_new_programme: false
+  authoritative_main_document: docs/V888_CONNECTOME_BOOTSTRAP.md
