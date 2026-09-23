@@ -1,7 +1,7 @@
 schema_version: 1
 kind: forge_ecosystem_agent_roadmap
 status: active
-last_updated: "2026-09-20"
+last_updated: "2026-09-23"
 repository: Memorithm/forge
 intended_consumer: autonomous_coding_agent
 merge_policy: never_merge_this_file_to_default_branch_unless_user_explicitly_requests
@@ -459,3 +459,50 @@ v888_connectome_topology_program:
     - F_V888_10_topology_kernel_cosearch_boundary
   nvidia_dependency_for_new_programme: false
   authoritative_main_document: docs/V888_CONNECTOME_BOOTSTRAP.md
+
+
+adaptive_repair_and_delta_kv_search_program_2026_09_23:
+  status: planned_after_destination_contract_freeze
+  objective: >-
+    Reuse Forge's bounded verify-before-measure search machinery for adaptive
+    repair policies/topologies and bounded rewritable-memory candidates only
+    after the destination repository publishes a versioned candidate contract
+    and independent verifier.
+  domains:
+    FLAT_MAA_14:
+      destination: Memorithm/FLAT-ATTENTION
+      candidate_scope:
+        - frozen_monotonic_expansion_schedules
+        - deployable_repair_signal_parameters_explicitly_authorized_by_FLAT
+        - portable_topology_or_kernel_configuration_after_host_gate
+      forbidden_inputs:
+        - protected_confirmatory_holdout_labels
+        - dense_exact_score_or_retained_mass_values_when_the_candidate_is_claimed_deployable
+      destination_authority:
+        - FLAT_scalar_and_dense_attention_oracles
+        - MAA_policy_freeze_and_holdout_separation
+        - final_numerical_and_runtime_promotion
+    SML_Delta_KV:
+      destination: Memorithm/SML-GENIUS
+      candidate_scope:
+        - bounded_key_projection_candidates
+        - key_and_value_dimensions_within_SML_budget
+        - fixed_point_learning_rate_and_update_policy_candidates
+        - recurrent_or_memory_topology_candidates
+      gate: DKV_0b_and_DKV_1_protocols_must_freeze_before_search_results_can_drive_promotion
+      destination_authority:
+        - SML_reference_memory_semantics
+        - interference_and_task_quality_oracles
+        - final_model_and_runtime_promotion
+  objectives_and_constraints:
+    - correctness_or_destination_verification_is_a_hard_gate_not_an_objective
+    - storage_bits_and_active_work_are_reported_separately
+    - correction_error_interference_or_attention_quality_are_destination_supplied_metrics
+    - latency_throughput_energy_or_memory_traffic_require_real_measurement_when_claimed
+    - return_Pareto_evidence_not_an_unqualified_single_winner
+  invariants:
+    - no_holdout_oracle_leakage_into_candidate_generation
+    - no_post_confirmatory_retuning_of_a_frozen_candidate_family
+    - Forge_never_actuates_ElasticXxx_resources_directly
+    - every_exported_candidate_carries_source_domain_trial_environment_and_protocol_identity
+    - destination_requalification_is_mandatory_even_when_Forge_verification_passes
