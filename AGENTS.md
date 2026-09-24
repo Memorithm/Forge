@@ -48,3 +48,9 @@ Do not merge the roadmap or ML/research overlays themselves into `main` unless t
 ## Mandatory BANC v888 topology-search bootstrap
 
 For any connectome-derived sparse recurrent topology search, SML CSP topology work, lesion-aware graph search, or FLAT sparse-admission topology search, also read [`docs/V888_CONNECTOME_BOOTSTRAP.md`](docs/V888_CONNECTOME_BOOTSTRAP.md). This programme is BANC v888-only, keeps raw connectome data outside Forge, and uses CPU/WGPU/open portable execution for new work; existing CUDA domains are not the implementation path for the V888 programme.
+
+## Mandatory verified agent-environment programme
+
+For agent-task synthesis, training/evaluation environment generation, failure replay, automated verifier construction, or multi-agent environment inspection, also read `deepseek_v41_verified_agent_environment_program_2026_09_24` in the off-main ecosystem roadmap.
+
+The source report motivates a `problem + environment + verifier` production pipeline, but Forge keeps its existing authority boundary: a generated environment is not trusted because it builds, independent verification precedes export, hostile code requires external OS isolation, protected holdouts cannot enter generation/repair, and Forge does not own the RL optimizer or model weights.
