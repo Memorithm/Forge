@@ -506,3 +506,28 @@ adaptive_repair_and_delta_kv_search_program_2026_09_23:
     - Forge_never_actuates_ElasticXxx_resources_directly
     - every_exported_candidate_carries_source_domain_trial_environment_and_protocol_identity
     - destination_requalification_is_mandatory_even_when_Forge_verification_passes
+deepseek_v41_verified_agent_environment_program_2026_09_24:
+  status: planned_after_existing_search_and_isolation_gates
+  source:
+    title: "DeepSeek-V4.1-Flash: Pushing the Limits of KV Cache Compression"
+    organization: DeepSeek-AI
+    reviewed_on: 2026-09-24
+  objective: >-
+    Evaluate whether Forge can generalize its verify-before-measure discipline
+    into a versioned factory for agent training/evaluation tasks described as
+    problem plus environment plus verifier, while keeping model training and
+    destination semantics outside Forge.
+  ordered_sequence:
+    - F_AGENTENV_0_versioned_problem_environment_verifier_contract
+    - F_AGENTENV_1_container_buildability_and_automatic_verifier_preflight
+    - F_AGENTENV_2_independent_solver_and_inspector_trajectories
+    - F_AGENTENV_3_failure_replay_and_repair_loop_with_provenance
+    - F_AGENTENV_4_difficulty_and_hackability_calibration_on_development_data
+    - F_AGENTENV_5_export_to_training_system_only_after_external_isolation_and_destination_acceptance
+  invariants:
+    - generated_environment_is_not_trusted_because_it_builds
+    - independent_verification_precedes_measurement_or_training_export
+    - hostile_code_requires_external_OS_isolation
+    - protected_holdout_information_never_enters_generation_or_repair
+    - Forge_does_not_own_RL_optimizer_model_weights_or_final_destination_promotion
+
