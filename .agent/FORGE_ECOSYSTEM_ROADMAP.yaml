@@ -558,6 +558,12 @@ ax_isolated_candidate_program:
     - candidate_isolation_evidence_never_substitutes_for_domain_correctness
     - network_is_default_deny_for_untrusted_generated_code_unless_explicitly_required
     - backend_admission_requires_truthful_enforcement_capabilities
+  completed_slices:
+    AXF1:
+      pull_request: 45
+      merged_commit: "43702f772ec323c9c514643db60029731c3ab4bb"
+      result: explicit_isolation_class_scope_honesty_and_self_hosted_runner_repair
   current_slice:
-    branch: agent/ax-isolation-contract
-    status: implementation_in_progress
+    scope: AXF2
+    status: ready
+    objective: candidate_execution_resource_and_network_envelope
