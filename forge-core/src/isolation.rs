@@ -187,6 +187,21 @@ impl CandidateBackendCapabilities {
     }
 }
 
+/// Capabilities of a supervised-process path that enforces only wall time.
+///
+/// This is used by domains that still rely on [`run_with_timeout`] rather
+/// than the POSIX rlimit wrapper.
+#[must_use]
+pub const fn timeout_only_backend_capabilities() -> CandidateBackendCapabilities {
+    CandidateBackendCapabilities {
+        isolation: IsolationClass::SupervisedProcess,
+        enforces_network_policy: false,
+        enforces_wall_clock: true,
+        enforces_memory: false,
+        enforces_file_size: false,
+    }
+}
+
 /// Capabilities of Forge's current POSIX supervised-process path.
 ///
 /// It applies wall-clock timeout plus RLIMIT_AS and RLIMIT_FSIZE. It does not
