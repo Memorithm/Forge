@@ -146,7 +146,8 @@ impl CandidateExecutionEnvelope {
 }
 
 /// Truthful controls implemented by one candidate-execution backend.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct CandidateBackendCapabilities {
     pub isolation: IsolationClass,
     pub enforces_network_policy: bool,
