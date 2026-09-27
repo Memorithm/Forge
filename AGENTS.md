@@ -54,3 +54,10 @@ For any connectome-derived sparse recurrent topology search, SML CSP topology wo
 For agent-task synthesis, training/evaluation environment generation, failure replay, automated verifier construction, or multi-agent environment inspection, also read `deepseek_v41_verified_agent_environment_program_2026_09_24` in the off-main ecosystem roadmap.
 
 The source report motivates a `problem + environment + verifier` production pipeline, but Forge keeps its existing authority boundary: a generated environment is not trusted because it builds, independent verification precedes export, hostile code requires external OS isolation, protected holdouts cannot enter generation/repair, and Forge does not own the RL optimizer or model weights.
+
+
+## Mandatory AX-inspired isolated-candidate bootstrap
+
+For generated-code execution, worker isolation, task-scoped capabilities, network egress, resource envelopes, sandbox backends, workload identity or suspend/resume, read `docs/AX_TASK_ISOLATION_BOOTSTRAP.md`.
+
+Google AX is an architectural reference only. Forge must use Memorithm-owned Rust contracts and must continue to classify timeout/rlimit-only execution as supervised process execution rather than a security sandbox.
