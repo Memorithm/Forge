@@ -15,11 +15,12 @@ use serde::{Deserialize, Serialize};
 
 use crate::candidate::{fnv1a, CandidateId};
 use crate::error::{ForgeError, Result};
+use crate::isolation::{CandidateBackendCapabilities, CandidateExecutionEnvelope};
 use crate::tls::{connect_tls, parse_tls_endpoint};
 
 pub const MAX_MESSAGE_BYTES: usize = 4 * 1024 * 1024;
-pub const PROTOCOL_VERSION: u32 = 3;
-pub const WORKER_DESCRIPTOR_VERSION: u32 = 1;
+pub const PROTOCOL_VERSION: u32 = 4;
+pub const WORKER_DESCRIPTOR_VERSION: u32 = 2;
 pub const BENCHMARK_PROTOCOL: &str = "forge.verify-then-measure.v1";
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
@@ -31,6 +32,7 @@ pub struct WorkerExecutionContext {
     pub arch: String,
     pub hardware: String,
     pub environment_fingerprint: String,
+    pub execution_capabilities: CandidateBackendCapabilities,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -39,6 +41,10 @@ pub struct EvaluationPayload {
     pub source_code: String,
     pub seed: u64,
     pub generation: u64,
+    /// Optional task-style execution requirements. When present, a worker must
+    /// fail closed before candidate verify/measure if its backend cannot
+    /// enforce the envelope.
+    pub execution_envelope: Option<CandidateExecutionEnvelope>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -228,6 +234,7 @@ mod tests {
             arch: "test-arch".into(),
             hardware: "test-cpu".into(),
             environment_fingerprint: "env-123".into(),
+            execution_capabilities: crate::isolation::posix_supervised_backend_capabilities(),
         }
     }
 
@@ -258,6 +265,7 @@ mod tests {
             source_code: source_code.into(),
             seed,
             generation,
+            execution_envelope: None,
         }
     }
 
