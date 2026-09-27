@@ -21,7 +21,10 @@ use forge_core::protocol::{
     EvaluationPayload, EvaluationResult, WorkerExecutionContext, BENCHMARK_PROTOCOL,
     MAX_MESSAGE_BYTES, PROTOCOL_VERSION, WORKER_DESCRIPTOR_VERSION,
 };
-use forge_core::{fnv1a, Domain, Trial};
+use forge_core::{
+    fnv1a, posix_supervised_backend_capabilities, timeout_only_backend_capabilities,
+    CandidateBackendCapabilities, Domain, Trial,
+};
 use serde::{de::DeserializeOwned, Serialize};
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 use tokio::net::TcpListener;
@@ -144,6 +147,14 @@ fn detected_hardware() -> String {
         .unwrap_or_else(|| format!("{}-hardware-unreported", std::env::consts::ARCH))
 }
 
+fn worker_execution_capabilities(domain: &str) -> CandidateBackendCapabilities {
+    match domain {
+        "low_rank_compression" => posix_supervised_backend_capabilities(),
+        "simd_gemm" => timeout_only_backend_capabilities(),
+        _ => timeout_only_backend_capabilities(),
+    }
+}
+
 fn worker_execution_context(domain: &str) -> WorkerExecutionContext {
     let worker_id = std::env::var("FORGE_WORKER_ID")
         .ok()
@@ -156,9 +167,15 @@ fn worker_execution_context(domain: &str) -> WorkerExecutionContext {
     let os = std::env::consts::OS.to_string();
     let arch = std::env::consts::ARCH.to_string();
     let explicit_env = std::env::var("FORGE_WORKER_ENV").unwrap_or_default();
+    let execution_capabilities = worker_execution_capabilities(domain);
     let material = format!(
-        "forge-worker:{}|descriptor={WORKER_DESCRIPTOR_VERSION}|domain={domain}|protocol={PROTOCOL_VERSION}|benchmark={BENCHMARK_PROTOCOL}|os={os}|arch={arch}|hardware={hardware}|toolchain={toolchain}|env={explicit_env}",
-        env!("CARGO_PKG_VERSION")
+        "forge-worker:{}|descriptor={WORKER_DESCRIPTOR_VERSION}|domain={domain}|protocol={PROTOCOL_VERSION}|benchmark={BENCHMARK_PROTOCOL}|os={os}|arch={arch}|hardware={hardware}|toolchain={toolchain}|env={explicit_env}|isolation={:?}|network={}|wall={}|memory={}|file={}",
+        env!("CARGO_PKG_VERSION"),
+        execution_capabilities.isolation,
+        execution_capabilities.enforces_network_policy,
+        execution_capabilities.enforces_wall_clock,
+        execution_capabilities.enforces_memory,
+        execution_capabilities.enforces_file_size,
     );
     let environment_fingerprint = format!("fnv1a64:{:016x}", fnv1a(&material));
 
@@ -170,6 +187,7 @@ fn worker_execution_context(domain: &str) -> WorkerExecutionContext {
         arch,
         hardware,
         environment_fingerprint,
+        execution_capabilities,
     }
 }
 
@@ -348,6 +366,7 @@ where
         seed: payload.seed,
     };
     let source_hash = fnv1a(&payload.source_code);
+    let execution_envelope = payload.execution_envelope;
     let source_code = payload.source_code;
     let candidate_id = payload.candidate_id;
     let trial_seed = payload.seed;
@@ -355,8 +374,20 @@ where
     let response_domain = domain.name().to_string();
 
     let result = tokio::task::spawn_blocking(move || {
-        let (is_valid, objectives, error_message) =
-            domain.evaluate(&source_code, candidate_id, &trial);
+        let (is_valid, objectives, error_message) = if let Some(envelope) = execution_envelope {
+            match context.execution_capabilities.admit(&envelope) {
+                Ok(()) => domain.evaluate(&source_code, candidate_id, &trial),
+                Err(error) => (
+                    false,
+                    Vec::new(),
+                    Some(format!(
+                        "Execution envelope rejected before candidate evaluation: {error}"
+                    )),
+                ),
+            }
+        } else {
+            domain.evaluate(&source_code, candidate_id, &trial)
+        };
         EvaluationResult {
             protocol_version: PROTOCOL_VERSION,
             candidate_id,
@@ -407,6 +438,27 @@ mod tests {
         );
     }
 
+    #[test]
+    fn worker_capabilities_are_domain_specific_and_fail_closed() {
+        let low_rank = worker_execution_capabilities("low_rank_compression");
+        assert!(low_rank.enforces_memory);
+        assert!(low_rank.enforces_file_size);
+        assert!(!low_rank.enforces_network_policy);
+
+        let simd = worker_execution_capabilities("simd_gemm");
+        assert!(simd.enforces_wall_clock);
+        assert!(!simd.enforces_memory);
+        assert!(!simd.enforces_file_size);
+
+        let strict = forge_core::CandidateExecutionEnvelope::untrusted_generated_code(
+            1_000,
+            64 * 1024 * 1024,
+            1024 * 1024,
+        );
+        assert!(low_rank.admit(&strict).is_err());
+        assert!(simd.admit(&strict).is_err());
+    }
+
     #[tokio::test]
     async fn frame_roundtrip_accepts_large_payload() {
         let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind");
@@ -433,6 +485,7 @@ mod tests {
                         arch: "test".into(),
                         hardware: "test-hardware".into(),
                         environment_fingerprint: "test-env".into(),
+                        execution_capabilities: timeout_only_backend_capabilities(),
                     },
                     is_valid: true,
                     objectives: vec![1.0],
@@ -450,6 +503,7 @@ mod tests {
                     source_code: "x".repeat(128 * 1024),
                     seed: 1,
                     generation: 2,
+                    execution_envelope: None,
                 },
                 "test",
                 std::time::Duration::from_secs(2),
