@@ -9,6 +9,39 @@ use std::process::{Command, Stdio};
 use std::thread;
 use std::time::{Duration, Instant};
 
+
+/// Niveau d'isolation déclaré pour une exécution de candidat.
+///
+/// L'ordre est intentionnel : il permet de comparer une exigence minimale avec
+/// la capacité annoncée par un backend sans confondre la supervision de
+/// processus avec une frontière de sécurité.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub enum IsolationClass {
+    /// Sous-processus supervisé, timeouts/rlimits possibles. Pas un sandbox.
+    SupervisedProcess,
+    /// Frontière de conteneur OS dédiée.
+    Container,
+    /// Isolation userspace-kernel de type gVisor.
+    Gvisor,
+    /// Frontière microVM avec virtualisation matérielle.
+    MicroVm,
+}
+
+impl IsolationClass {
+    /// Indique si la classe représente une frontière d'isolation OS destinée
+    /// à du code potentiellement hostile.
+    #[must_use]
+    pub const fn is_security_boundary(self) -> bool {
+        !matches!(self, Self::SupervisedProcess)
+    }
+
+    /// Vérifie qu'un backend satisfait au moins l'exigence demandée.
+    #[must_use]
+    pub const fn satisfies(self, required: Self) -> bool {
+        (self as u8) >= (required as u8)
+    }
+}
+
 /// Exécute une commande système (ex: `cargo bench`) avec un timeout strict.
 /// Retourne la sortie standard (stdout) en cas de succès, coupe le processus
 /// et renvoie une variante d'erreur explicite en cas de dépassement ou de crash.
@@ -76,7 +109,7 @@ pub fn run_with_timeout(mut cmd: Command, timeout: Duration) -> Result<String> {
 ///    empêcher les candidats de saturer la machine hôte.
 ///
 /// Ces restrictions sont appliquées dans le processus enfant *avant* l'exec,
-/// garantissant une isolation au niveau du noyau.
+/// appliquant des limites de ressources au niveau du noyau. Ces limites ne constituent pas un sandbox de sécurité.
 #[allow(unsafe_code)]
 pub fn run_with_secure_limits(
     mut cmd: std::process::Command,
@@ -150,5 +183,24 @@ pub fn run_with_secure_limits(
                 return Err(ForgeError::Evaluation(format!("Erreur de monitoring: {e}")));
             }
         }
+    }
+}
+
+
+#[cfg(test)]
+mod isolation_contract_tests {
+    use super::IsolationClass;
+
+    #[test]
+    fn supervised_process_is_not_a_security_boundary() {
+        assert!(!IsolationClass::SupervisedProcess.is_security_boundary());
+        assert!(IsolationClass::Container.is_security_boundary());
+    }
+
+    #[test]
+    fn stronger_backends_satisfy_weaker_requirements() {
+        assert!(IsolationClass::MicroVm.satisfies(IsolationClass::Container));
+        assert!(IsolationClass::Gvisor.satisfies(IsolationClass::Container));
+        assert!(!IsolationClass::SupervisedProcess.satisfies(IsolationClass::Container));
     }
 }
