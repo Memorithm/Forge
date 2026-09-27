@@ -564,6 +564,8 @@ ax_isolated_candidate_program:
       merged_commit: "43702f772ec323c9c514643db60029731c3ab4bb"
       result: explicit_isolation_class_scope_honesty_and_self_hosted_runner_repair
   current_slice:
+    branch: agent/ax-candidate-envelope
+    pull_request: 46
     scope: AXF2
-    status: ready
+    status: ci_pending
     objective: candidate_execution_resource_and_network_envelope
