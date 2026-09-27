@@ -17,7 +17,8 @@
 //!
 //! ## 4 Piliers industriels
 //! - [`diagnostics`] : capture des échecs (Pilier 1) + parsing Criterion (Pilier 2)
-//! - [`isolation::run_with_secure_limits`] : double verrou timeout + rlimit Posix
+//! - [`isolation::CandidateExecutionEnvelope`] : exigences explicites d'isolation et de ressources
+//! - [`isolation::run_with_secure_limits`] : compatibilité POSIX timeout + rlimit, sans prétention de sandbox
 //! - [`registry::AlgorithmRegistry`] : registre transactionnel Sled avec lignage (Pilier 4)
 //! - [`domains::simd_kernel`] : micro-kernels SIMD auto-vectorisés (Pilier 3)
 //! - [`mutation::llm_mutator`] : mutation macroscopique par LLM avec injection de feedback
@@ -61,5 +62,9 @@ pub use evolve::{
     evaluate_parallel_distributed, evaluate_with_feedback, sort_by_pareto_domination, Config,
     DeserializeFromSource, Engine, EngineState, Individual, Report,
 };
-pub use isolation::run_with_timeout;
+pub use isolation::{
+    posix_supervised_backend_capabilities, run_with_execution_envelope, run_with_timeout,
+    CandidateBackendCapabilities, CandidateExecutionEnvelope, CandidateNetworkPolicy,
+    IsolationClass, CANDIDATE_EXECUTION_ENVELOPE_VERSION,
+};
 pub use trial::Trial;
