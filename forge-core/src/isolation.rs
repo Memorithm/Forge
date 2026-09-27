@@ -9,7 +9,6 @@ use std::process::{Command, Stdio};
 use std::thread;
 use std::time::{Duration, Instant};
 
-
 /// Niveau d'isolation déclaré pour une exécution de candidat.
 ///
 /// L'ordre est intentionnel : il permet de comparer une exigence minimale avec
@@ -185,7 +184,6 @@ pub fn run_with_secure_limits(
         }
     }
 }
-
 
 #[cfg(test)]
 mod isolation_contract_tests {
