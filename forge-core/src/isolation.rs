@@ -376,8 +376,8 @@ pub fn run_with_secure_limits(
 #[cfg(test)]
 mod isolation_contract_tests {
     use super::{
-        posix_supervised_backend_capabilities, CandidateExecutionEnvelope,
-        CandidateNetworkPolicy, IsolationClass, CANDIDATE_EXECUTION_ENVELOPE_VERSION,
+        posix_supervised_backend_capabilities, CandidateExecutionEnvelope, CandidateNetworkPolicy,
+        IsolationClass, CANDIDATE_EXECUTION_ENVELOPE_VERSION,
     };
 
     #[test]
