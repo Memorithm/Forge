@@ -29,14 +29,17 @@ concurrency:
 jobs:
   sml-topology:
     runs-on: [self-hosted]
-    env:
-      RUSTUP_HOME: ${{ runner.temp }}/rustup-home
-      CARGO_HOME: ${{ runner.temp }}/cargo-home
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
+      - name: Configure writable Rust homes
+        shell: bash
+        run: |
+          echo "RUSTUP_HOME=$RUNNER_TEMP/rustup-home" >> "$GITHUB_ENV"
+          echo "CARGO_HOME=$RUNNER_TEMP/cargo-home" >> "$GITHUB_ENV"
+          mkdir -p "$RUNNER_TEMP/rustup-home" "$RUNNER_TEMP/cargo-home"
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@fa04a1451ff1842e2626ccb99004d0195b455a88 # master
         with:
