@@ -657,6 +657,7 @@ fn evaluate_distributed_dynamic<C: Candidate>(
                     source_code: cand.repr(),
                     seed: trial.seed,
                     generation: current_gen,
+                    execution_envelope: None,
                 };
 
                 match dispatch_evaluation_to_worker(&worker_addr, &payload, domain.name(), timeout)
