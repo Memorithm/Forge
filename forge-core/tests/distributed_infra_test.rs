@@ -16,7 +16,9 @@ use forge_core::protocol::{
     EvaluationPayload, EvaluationResult, WorkerExecutionContext, BENCHMARK_PROTOCOL,
     PROTOCOL_VERSION, WORKER_DESCRIPTOR_VERSION,
 };
-use forge_core::{fnv1a, Candidate, CandidateId, Individual, Trial};
+use forge_core::{
+    fnv1a, timeout_only_backend_capabilities, Candidate, CandidateId, Individual, Trial,
+};
 
 const STUB_DOMAIN: &str = "stub-domain";
 
@@ -72,6 +74,7 @@ fn worker_context() -> WorkerExecutionContext {
         arch: "test-arch".into(),
         hardware: "test-hardware".into(),
         environment_fingerprint: "test-environment".into(),
+        execution_capabilities: timeout_only_backend_capabilities(),
     }
 }
 
@@ -175,6 +178,7 @@ fn worker_result_echoes_exact_trial_identity() {
         source_code: "valid_fn_7".into(),
         seed: 0xA5A5,
         generation: 19,
+        execution_envelope: None,
     };
     let result = evaluate_stub(&payload);
     assert_eq!(result.trial_seed, payload.seed);
