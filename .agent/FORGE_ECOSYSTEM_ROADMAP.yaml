@@ -531,3 +531,33 @@ deepseek_v41_verified_agent_environment_program_2026_09_24:
     - protected_holdout_information_never_enters_generation_or_repair
     - Forge_does_not_own_RL_optimizer_model_weights_or_final_destination_promotion
 
+
+
+ax_isolated_candidate_program:
+  source_review_date: "2026-09-27"
+  external_reference: google_ax_architecture_only
+  dependency_policy:
+    google_ax_runtime_dependency: false
+    implementation_language: rust
+  objective: >-
+    Execute generated and mutated candidates inside explicit task-scoped
+    capability, resource, network and isolation envelopes while preserving
+    Forge's independent verify-before-measure authority.
+  phases:
+    - AXF1_explicit_isolation_class_and_scope_honesty
+    - AXF2_candidate_execution_resource_and_network_envelope
+    - AXF3_worker_enforceable_capability_advertisement
+    - AXF4_fail_closed_worker_admission
+    - AXF5_container_or_stronger_backend_via_Hub_and_RemoteOps
+    - AXF6_hostile_candidate_qualification_campaign
+    - AXF7_task_scoped_workload_identity_and_authenticated_evidence
+    - AXF8_side_effect_safe_suspend_resume_evaluation
+  invariants:
+    - timeout_and_rlimit_are_defense_in_depth_not_a_security_sandbox
+    - correctness_verification_precedes_measurement_and_selection
+    - candidate_isolation_evidence_never_substitutes_for_domain_correctness
+    - network_is_default_deny_for_untrusted_generated_code_unless_explicitly_required
+    - backend_admission_requires_truthful_enforcement_capabilities
+  current_slice:
+    branch: agent/ax-isolation-contract
+    status: implementation_in_progress
