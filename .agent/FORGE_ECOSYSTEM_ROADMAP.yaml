@@ -563,9 +563,16 @@ ax_isolated_candidate_program:
       pull_request: 45
       merged_commit: "43702f772ec323c9c514643db60029731c3ab4bb"
       result: explicit_isolation_class_scope_honesty_and_self_hosted_runner_repair
+  completed_slices:
+    AXF1:
+      pull_request: 45
+      merged_commit: "43702f772ec323c9c514643db60029731c3ab4bb"
+      result: explicit_isolation_class_scope_honesty_and_self_hosted_runner_repair
+    AXF2:
+      pull_request: 46
+      merged_commit: "598282a2cba259971be00f49796443fe0e4a825a"
+      result: explicit_candidate_execution_resource_network_and_isolation_envelope
   current_slice:
-    branch: agent/ax-candidate-envelope
-    pull_request: 46
-    scope: AXF2
-    status: ci_pending
-    objective: candidate_execution_resource_and_network_envelope
+    scope: AXF3
+    status: active
+    objective: worker_enforceable_capability_advertisement
