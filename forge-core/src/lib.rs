@@ -64,6 +64,7 @@ pub use evolve::{
 };
 pub use isolation::{
     posix_supervised_backend_capabilities, run_with_execution_envelope, run_with_timeout,
+    timeout_only_backend_capabilities,
     CandidateBackendCapabilities, CandidateExecutionEnvelope, CandidateNetworkPolicy,
     IsolationClass, CANDIDATE_EXECUTION_ENVELOPE_VERSION,
 };
