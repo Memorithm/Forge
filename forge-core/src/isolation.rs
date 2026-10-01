@@ -6,9 +6,220 @@
 use crate::error::{ForgeError, Result};
 use serde::{Deserialize, Serialize};
 use std::io::Read;
-use std::process::{Command, Stdio};
+use std::process::{Child, Command, ExitStatus, Stdio};
+use std::sync::mpsc::{self, Receiver};
 use std::thread;
 use std::time::{Duration, Instant};
+
+/// Maximum number of bytes retained from each candidate output stream.
+///
+/// Drains continue reading after this limit so a chatty child cannot block on
+/// a full pipe, but excess bytes are discarded. The limit applies separately
+/// to stdout and stderr.
+pub const SUPERVISED_STREAM_CAPTURE_LIMIT_BYTES: usize = 1024 * 1024;
+
+const PROCESS_POLL_INTERVAL: Duration = Duration::from_millis(10);
+const PIPE_DRAIN_GRACE: Duration = Duration::from_secs(2);
+
+#[derive(Debug)]
+struct BoundedDrain {
+    bytes: Vec<u8>,
+    truncated: bool,
+    read_error: Option<String>,
+}
+
+fn spawn_bounded_drain<R>(mut reader: R) -> Receiver<BoundedDrain>
+where
+    R: Read + Send + 'static,
+{
+    let (sender, receiver) = mpsc::sync_channel(1);
+    thread::spawn(move || {
+        let mut bytes = Vec::with_capacity(SUPERVISED_STREAM_CAPTURE_LIMIT_BYTES.min(64 * 1024));
+        let mut truncated = false;
+        let mut read_error = None;
+        let mut chunk = [0_u8; 8192];
+
+        loop {
+            match reader.read(&mut chunk) {
+                Ok(0) => break,
+                Ok(read) => {
+                    let remaining =
+                        SUPERVISED_STREAM_CAPTURE_LIMIT_BYTES.saturating_sub(bytes.len());
+                    let retained = remaining.min(read);
+                    bytes.extend_from_slice(&chunk[..retained]);
+                    truncated |= retained < read;
+                }
+                Err(error) => {
+                    read_error = Some(error.to_string());
+                    break;
+                }
+            }
+        }
+
+        let _ = sender.send(BoundedDrain {
+            bytes,
+            truncated,
+            read_error,
+        });
+    });
+    receiver
+}
+
+fn receive_drain(receiver: Receiver<BoundedDrain>, stream: &str) -> Result<BoundedDrain> {
+    receiver.recv_timeout(PIPE_DRAIN_GRACE).map_err(|error| {
+        ForgeError::Evaluation(format!(
+            "timeout while draining bounded candidate {stream}: {error}"
+        ))
+    })
+}
+
+fn drain_text(drain: &BoundedDrain) -> String {
+    String::from_utf8_lossy(&drain.bytes).into_owned()
+}
+
+fn drain_note(drain: &BoundedDrain) -> String {
+    let mut notes = Vec::new();
+    if drain.truncated {
+        notes.push(format!(
+            "capture truncated at {SUPERVISED_STREAM_CAPTURE_LIMIT_BYTES} bytes"
+        ));
+    }
+    if let Some(error) = &drain.read_error {
+        notes.push(format!("pipe read failed: {error}"));
+    }
+    if notes.is_empty() {
+        String::new()
+    } else {
+        format!(" ({})", notes.join("; "))
+    }
+}
+
+#[allow(unsafe_code)]
+fn configure_process_group(cmd: &mut Command) {
+    use std::os::unix::process::CommandExt;
+
+    // SAFETY: setpgid is async-signal-safe and uses no borrowed parent memory.
+    // A dedicated group lets the supervisor terminate the leader and every
+    // descendant that remains in the candidate's supervision boundary.
+    unsafe {
+        cmd.pre_exec(|| {
+            if libc::setpgid(0, 0) == 0 {
+                Ok(())
+            } else {
+                Err(std::io::Error::last_os_error())
+            }
+        });
+    }
+}
+
+#[allow(unsafe_code)]
+fn terminate_process_group(process_group: i32) -> Result<()> {
+    // SAFETY: a negative PID addresses exactly the dedicated process group.
+    let rc = unsafe { libc::kill(-process_group, libc::SIGKILL) };
+    if rc == 0 {
+        return Ok(());
+    }
+    let error = std::io::Error::last_os_error();
+    if error.raw_os_error() == Some(libc::ESRCH) {
+        Ok(())
+    } else {
+        Err(ForgeError::Evaluation(format!(
+            "cannot terminate candidate process group {process_group}: {error}"
+        )))
+    }
+}
+
+fn cleanup_process_group(child: &mut Child, process_group: i32) -> Result<()> {
+    terminate_process_group(process_group)?;
+    // `Child` caches a status returned by `try_wait`, so this also succeeds
+    // when the leader has already exited. Group members become orphans and are
+    // reaped by the system init; Forge deliberately avoids process-wide
+    // subreaper state that could adopt unrelated children or escaped sessions.
+    child
+        .wait()
+        .map(|_| ())
+        .map_err(|error| ForgeError::Evaluation(format!("cannot reap candidate leader: {error}")))
+}
+
+fn finish_supervised_output(
+    status: ExitStatus,
+    stdout_receiver: Receiver<BoundedDrain>,
+    stderr_receiver: Receiver<BoundedDrain>,
+    failure_prefix: &str,
+) -> Result<String> {
+    let stdout = receive_drain(stdout_receiver, "stdout")?;
+    let stderr = receive_drain(stderr_receiver, "stderr")?;
+    if status.success() {
+        if let Some(error) = stdout.read_error.as_ref().or(stderr.read_error.as_ref()) {
+            return Err(ForgeError::Evaluation(format!(
+                "candidate output drain failed: {error}"
+            )));
+        }
+        return Ok(drain_text(&stdout));
+    }
+
+    Err(ForgeError::Evaluation(format!(
+        "{failure_prefix} ({status}). Stderr{}: {}. Stdout{}: {}",
+        drain_note(&stderr),
+        drain_text(&stderr),
+        drain_note(&stdout),
+        drain_text(&stdout)
+    )))
+}
+
+fn supervise_spawned_child(
+    mut child: Child,
+    timeout: Duration,
+    failure_prefix: &str,
+) -> Result<String> {
+    let process_group = i32::try_from(child.id()).map_err(|_| {
+        ForgeError::Evaluation("candidate PID cannot be represented as a process group".into())
+    })?;
+    let stdout = child
+        .stdout
+        .take()
+        .ok_or_else(|| ForgeError::Evaluation("candidate stdout pipe was not configured".into()))?;
+    let stderr = child
+        .stderr
+        .take()
+        .ok_or_else(|| ForgeError::Evaluation("candidate stderr pipe was not configured".into()))?;
+    let stdout_receiver = spawn_bounded_drain(stdout);
+    let stderr_receiver = spawn_bounded_drain(stderr);
+    let start = Instant::now();
+
+    loop {
+        match child.try_wait() {
+            Ok(Some(status)) => {
+                cleanup_process_group(&mut child, process_group)?;
+                return finish_supervised_output(
+                    status,
+                    stdout_receiver,
+                    stderr_receiver,
+                    failure_prefix,
+                );
+            }
+            Ok(None) if start.elapsed() > timeout => {
+                cleanup_process_group(&mut child, process_group)?;
+                // Complete both drains after termination so inherited pipe
+                // descriptors cannot leave worker threads blocked forever.
+                let _ = receive_drain(stdout_receiver, "stdout")?;
+                let _ = receive_drain(stderr_receiver, "stderr")?;
+                return Err(ForgeError::Evaluation(format!(
+                    "Timeout dépassé ({timeout:?}) : groupe de processus candidat arrêté et récupéré."
+                )));
+            }
+            Ok(None) => thread::sleep(PROCESS_POLL_INTERVAL),
+            Err(error) => {
+                cleanup_process_group(&mut child, process_group)?;
+                let _ = receive_drain(stdout_receiver, "stdout")?;
+                let _ = receive_drain(stderr_receiver, "stderr")?;
+                return Err(ForgeError::Evaluation(format!(
+                    "Erreur système d'interrogation de processus: {error}"
+                )));
+            }
+        }
+    }
+}
 
 /// Niveau d'isolation déclaré pour une exécution de candidat.
 ///
@@ -203,10 +414,14 @@ pub const fn posix_supervised_backend_capabilities() -> CandidateBackendCapabili
 
 /// Exécute une commande système (ex: `cargo bench`) avec un timeout strict.
 /// Retourne la sortie standard (stdout) en cas de succès, coupe le processus
-/// et renvoie une variante d'erreur explicite en cas de dépassement ou de crash.
+/// et les descendants restés dans son groupe en cas de dépassement ou de fin
+/// du leader. Stdout et stderr sont drainés simultanément et leur capture est
+/// bornée séparément par [`SUPERVISED_STREAM_CAPTURE_LIMIT_BYTES`].
+///
+/// Renvoie une variante d'erreur explicite en cas de dépassement ou de crash.
 pub fn run_with_timeout(mut cmd: Command, timeout: Duration) -> Result<String> {
-    // On redirige stdout et stderr pour capturer finement les diagnostics
-    let mut child = cmd
+    configure_process_group(&mut cmd);
+    let child = cmd
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
@@ -214,51 +429,7 @@ pub fn run_with_timeout(mut cmd: Command, timeout: Duration) -> Result<String> {
             ForgeError::Evaluation(format!("Impossible de spawn le processus candidat: {e}"))
         })?;
 
-    let start = Instant::now();
-
-    loop {
-        match child.try_wait() {
-            // Le processus s'est terminé proprement
-            Ok(Some(status)) => {
-                if status.success() {
-                    let mut stdout_str = String::new();
-                    if let Some(mut stdout) = child.stdout.take() {
-                        let _ = stdout.read_to_string(&mut stdout_str);
-                    }
-                    return Ok(stdout_str);
-                } else {
-                    let mut stderr_str = String::new();
-                    if let Some(mut stderr) = child.stderr.take() {
-                        let _ = stderr.read_to_string(&mut stderr_str);
-                    }
-                    return Err(ForgeError::Evaluation(format!(
-                        "Échec d'exécution du code généré (code de sortie: {status}). Stderr: {stderr_str}"
-                    )));
-                }
-            }
-            // Le processus est toujours en cours d'exécution
-            Ok(None) => {
-                if start.elapsed() > timeout {
-                    let _ = child.kill(); // Destruction immédiate du processus récalcitrant
-                    let _ = child.wait(); // Nettoyage pour éviter les processus zombies
-                    return Err(ForgeError::Evaluation(format!(
-                        "Timeout dépassé ({:?}) : boucle infinie ou blocage détecté. Candidat éliminé.",
-                        timeout
-                    )));
-                }
-                // Pause courte pour éviter de saturer le cœur CPU de supervision
-                thread::sleep(Duration::from_millis(15));
-            }
-            // Erreur système de bas niveau durant le polling
-            Err(e) => {
-                let _ = child.kill();
-                let _ = child.wait();
-                return Err(ForgeError::Evaluation(format!(
-                    "Erreur système d'interrogation de processus: {e}"
-                )));
-            }
-        }
-    }
+    supervise_spawned_child(child, timeout, "Échec d'exécution du code généré")
 }
 
 /// Exécute une commande système avec un double verrou de sécurité :
@@ -298,54 +469,16 @@ pub fn run_with_execution_envelope(
             Ok(())
         });
     }
+    configure_process_group(&mut cmd);
 
-    let mut child = cmd
+    let child = cmd
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
         .spawn()
         .map_err(|e| ForgeError::Evaluation(format!("Impossible de spawn: {e}")))?;
 
-    let timeout = std::time::Duration::from_millis(envelope.wall_clock_ms);
-    let start = std::time::Instant::now();
-
-    loop {
-        match child.try_wait() {
-            Ok(Some(status)) => {
-                if status.success() {
-                    let mut stdout_str = String::new();
-                    if let Some(mut stdout) = child.stdout.take() {
-                        use std::io::Read;
-                        let _ = stdout.read_to_string(&mut stdout_str);
-                    }
-                    return Ok(stdout_str);
-                } else {
-                    let mut stderr_str = String::new();
-                    if let Some(mut stderr) = child.stderr.take() {
-                        use std::io::Read;
-                        let _ = stderr.read_to_string(&mut stderr_str);
-                    }
-                    return Err(ForgeError::Evaluation(format!(
-                        "Crash sous-processus ({status}). Stderr: {stderr_str}"
-                    )));
-                }
-            }
-            Ok(None) => {
-                if start.elapsed() > timeout {
-                    let _ = child.kill();
-                    let _ = child.wait();
-                    return Err(ForgeError::Evaluation(
-                        "Timeout dépassé : exécution avortée.".into(),
-                    ));
-                }
-                std::thread::sleep(std::time::Duration::from_millis(10));
-            }
-            Err(e) => {
-                let _ = child.kill();
-                let _ = child.wait();
-                return Err(ForgeError::Evaluation(format!("Erreur de monitoring: {e}")));
-            }
-        }
-    }
+    let timeout = Duration::from_millis(envelope.wall_clock_ms);
+    supervise_spawned_child(child, timeout, "Crash sous-processus")
 }
 
 /// Compatibility wrapper for the historical POSIX resource-limited runner.
