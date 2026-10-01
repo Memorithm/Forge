@@ -243,12 +243,14 @@ fn supervise_spawned_child(
     let process_group = i32::try_from(child.id()).map_err(|_| {
         ForgeError::Evaluation("candidate PID cannot be represented as a process group".into())
     })?;
-    let stdout = child.stdout.take().ok_or_else(|| {
-        ForgeError::Evaluation("candidate stdout pipe was not configured".into())
-    })?;
-    let stderr = child.stderr.take().ok_or_else(|| {
-        ForgeError::Evaluation("candidate stderr pipe was not configured".into())
-    })?;
+    let stdout = child
+        .stdout
+        .take()
+        .ok_or_else(|| ForgeError::Evaluation("candidate stdout pipe was not configured".into()))?;
+    let stderr = child
+        .stderr
+        .take()
+        .ok_or_else(|| ForgeError::Evaluation("candidate stderr pipe was not configured".into()))?;
     let stdout_receiver = spawn_bounded_drain(stdout);
     let stderr_receiver = spawn_bounded_drain(stderr);
     let start = Instant::now();
