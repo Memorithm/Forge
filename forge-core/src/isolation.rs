@@ -414,9 +414,9 @@ pub const fn posix_supervised_backend_capabilities() -> CandidateBackendCapabili
 
 /// Exécute une commande système (ex: `cargo bench`) avec un timeout strict.
 /// Retourne la sortie standard (stdout) en cas de succès, coupe le processus
-/// et ses descendants en cas de dépassement ou de fin du leader. Stdout et
-/// stderr sont drainés simultanément et leur capture est bornée séparément par
-/// [`SUPERVISED_STREAM_CAPTURE_LIMIT_BYTES`].
+/// et les descendants restés dans son groupe en cas de dépassement ou de fin
+/// du leader. Stdout et stderr sont drainés simultanément et leur capture est
+/// bornée séparément par [`SUPERVISED_STREAM_CAPTURE_LIMIT_BYTES`].
 ///
 /// Renvoie une variante d'erreur explicite en cas de dépassement ou de crash.
 pub fn run_with_timeout(mut cmd: Command, timeout: Duration) -> Result<String> {
