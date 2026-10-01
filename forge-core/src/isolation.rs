@@ -138,9 +138,7 @@ fn cleanup_process_group(child: &mut Child, process_group: i32) -> Result<()> {
     child
         .wait()
         .map(|_| ())
-        .map_err(|error| {
-            ForgeError::Evaluation(format!("cannot reap candidate leader: {error}"))
-        })
+        .map_err(|error| ForgeError::Evaluation(format!("cannot reap candidate leader: {error}")))
 }
 
 fn finish_supervised_output(
