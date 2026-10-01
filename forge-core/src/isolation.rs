@@ -20,7 +20,6 @@ pub const SUPERVISED_STREAM_CAPTURE_LIMIT_BYTES: usize = 1024 * 1024;
 
 const PROCESS_POLL_INTERVAL: Duration = Duration::from_millis(10);
 const PIPE_DRAIN_GRACE: Duration = Duration::from_secs(2);
-const DESCENDANT_REAP_GRACE: Duration = Duration::from_secs(2);
 
 #[derive(Debug)]
 struct BoundedDrain {
@@ -95,35 +94,6 @@ fn drain_note(drain: &BoundedDrain) -> String {
     }
 }
 
-#[cfg(target_os = "linux")]
-#[allow(unsafe_code)]
-fn ensure_descendant_subreaper() -> Result<()> {
-    use std::sync::OnceLock;
-
-    static SUBREAPER: OnceLock<std::result::Result<(), i32>> = OnceLock::new();
-    let result = SUBREAPER.get_or_init(|| {
-        // SAFETY: PR_SET_CHILD_SUBREAPER has no pointer arguments. It marks the
-        // current Forge process as the reaper for orphaned candidate
-        // descendants so they can be waited by process group after cleanup.
-        let rc = unsafe { libc::prctl(libc::PR_SET_CHILD_SUBREAPER, 1, 0, 0, 0) };
-        if rc == 0 {
-            Ok(())
-        } else {
-            Err(std::io::Error::last_os_error().raw_os_error().unwrap_or(-1))
-        }
-    });
-    result.map_err(|errno| {
-        ForgeError::Evaluation(format!(
-            "cannot enable candidate descendant reaping (errno {errno})"
-        ))
-    })
-}
-
-#[cfg(not(target_os = "linux"))]
-fn ensure_descendant_subreaper() -> Result<()> {
-    Ok(())
-}
-
 #[allow(unsafe_code)]
 fn configure_process_group(cmd: &mut Command) {
     use std::os::unix::process::CommandExt;
@@ -159,54 +129,18 @@ fn terminate_process_group(process_group: i32) -> Result<()> {
     }
 }
 
-#[cfg(target_os = "linux")]
-#[allow(unsafe_code)]
-fn reap_process_group(process_group: i32) -> Result<()> {
-    let deadline = Instant::now() + DESCENDANT_REAP_GRACE;
-    loop {
-        let mut status = 0;
-        // SAFETY: status points to valid writable storage. A negative PID waits
-        // only for adopted descendants in the candidate process group.
-        let waited = unsafe { libc::waitpid(-process_group, &mut status, libc::WNOHANG) };
-        if waited > 0 {
-            continue;
-        }
-        if waited == 0 {
-            if Instant::now() >= deadline {
-                return Err(ForgeError::Evaluation(format!(
-                    "timeout while reaping candidate process group {process_group}"
-                )));
-            }
-            thread::sleep(PROCESS_POLL_INTERVAL);
-            continue;
-        }
-
-        let error = std::io::Error::last_os_error();
-        match error.raw_os_error() {
-            Some(libc::ECHILD) => return Ok(()),
-            Some(libc::EINTR) => continue,
-            _ => {
-                return Err(ForgeError::Evaluation(format!(
-                    "cannot reap candidate process group {process_group}: {error}"
-                )))
-            }
-        }
-    }
-}
-
-#[cfg(not(target_os = "linux"))]
-fn reap_process_group(_process_group: i32) -> Result<()> {
-    Ok(())
-}
-
-fn cleanup_process_group(child: &mut Child, process_group: i32, leader_reaped: bool) -> Result<()> {
+fn cleanup_process_group(child: &mut Child, process_group: i32) -> Result<()> {
     terminate_process_group(process_group)?;
-    if !leader_reaped {
-        child.wait().map_err(|error| {
+    // `Child` caches a status returned by `try_wait`, so this also succeeds
+    // when the leader has already exited. Group members become orphans and are
+    // reaped by the system init; Forge deliberately avoids process-wide
+    // subreaper state that could adopt unrelated children or escaped sessions.
+    child
+        .wait()
+        .map(|_| ())
+        .map_err(|error| {
             ForgeError::Evaluation(format!("cannot reap candidate leader: {error}"))
-        })?;
-    }
-    reap_process_group(process_group)
+        })
 }
 
 fn finish_supervised_output(
@@ -258,7 +192,7 @@ fn supervise_spawned_child(
     loop {
         match child.try_wait() {
             Ok(Some(status)) => {
-                cleanup_process_group(&mut child, process_group, true)?;
+                cleanup_process_group(&mut child, process_group)?;
                 return finish_supervised_output(
                     status,
                     stdout_receiver,
@@ -267,7 +201,7 @@ fn supervise_spawned_child(
                 );
             }
             Ok(None) if start.elapsed() > timeout => {
-                cleanup_process_group(&mut child, process_group, false)?;
+                cleanup_process_group(&mut child, process_group)?;
                 // Complete both drains after termination so inherited pipe
                 // descriptors cannot leave worker threads blocked forever.
                 let _ = receive_drain(stdout_receiver, "stdout")?;
@@ -278,7 +212,7 @@ fn supervise_spawned_child(
             }
             Ok(None) => thread::sleep(PROCESS_POLL_INTERVAL),
             Err(error) => {
-                cleanup_process_group(&mut child, process_group, false)?;
+                cleanup_process_group(&mut child, process_group)?;
                 let _ = receive_drain(stdout_receiver, "stdout")?;
                 let _ = receive_drain(stderr_receiver, "stderr")?;
                 return Err(ForgeError::Evaluation(format!(
@@ -488,7 +422,6 @@ pub const fn posix_supervised_backend_capabilities() -> CandidateBackendCapabili
 ///
 /// Renvoie une variante d'erreur explicite en cas de dépassement ou de crash.
 pub fn run_with_timeout(mut cmd: Command, timeout: Duration) -> Result<String> {
-    ensure_descendant_subreaper()?;
     configure_process_group(&mut cmd);
     let child = cmd
         .stdout(Stdio::piped())
@@ -517,7 +450,6 @@ pub fn run_with_execution_envelope(
     use std::os::unix::process::CommandExt;
 
     posix_supervised_backend_capabilities().admit(envelope)?;
-    ensure_descendant_subreaper()?;
     let max_memory_bytes = envelope.max_memory_bytes;
     let max_file_size_bytes = envelope.max_file_size_bytes;
 
