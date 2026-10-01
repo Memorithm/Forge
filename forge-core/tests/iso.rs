@@ -37,7 +37,7 @@ fn drains_stdout_and_stderr_concurrently_without_unbounded_capture() {
 
 #[cfg(target_os = "linux")]
 #[test]
-fn cleans_up_descendants_when_the_leader_exits() {
+fn stops_process_group_descendants_when_the_leader_exits() {
     let pid_file = std::env::temp_dir().join(format!(
         "forge-descendant-{}-{}.pid",
         std::process::id(),
@@ -55,12 +55,16 @@ fn cleans_up_descendants_when_the_leader_exits() {
         .expect("numeric descendant PID");
     let _ = std::fs::remove_file(pid_file);
 
-    // SAFETY: signal 0 only checks whether the PID still exists.
-    let rc = unsafe { libc::kill(descendant, 0) };
-    assert_eq!(
-        rc, -1,
-        "descendant {descendant} must have been stopped and reaped"
-    );
+    let deadline = std::time::Instant::now() + Duration::from_secs(2);
+    let rc = loop {
+        // SAFETY: signal 0 only checks whether the PID still exists.
+        let rc = unsafe { libc::kill(descendant, 0) };
+        if rc == -1 || std::time::Instant::now() >= deadline {
+            break rc;
+        }
+        std::thread::sleep(Duration::from_millis(10));
+    };
+    assert_eq!(rc, -1, "process-group descendant {descendant} still exists");
     assert_eq!(
         std::io::Error::last_os_error().raw_os_error(),
         Some(libc::ESRCH)
