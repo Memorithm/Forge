@@ -44,3 +44,17 @@ Forge retains independent correctness verification. Isolation evidence cannot ma
 - no network-policy enforcement.
 
 Therefore the strict `untrusted_generated_code(...)` envelope cannot run on that backend and fails closed until AXF-5 provides a container-or-stronger execution path.
+
+### Native-domain enforcement
+
+SIMD, CUDA and low-rank generated candidates use the shared
+run_untrusted_candidate entry point for compilation, verification and
+measurement. That entry point always constructs the strict
+CandidateExecutionEnvelope::untrusted_generated_code(...) requirement, which
+requires container-or-stronger isolation plus deny-all networking.
+
+The local POSIX supervised-process backend does not satisfy that contract and
+therefore rejects the command before spawn. No native domain may fall back to
+run_with_timeout or run_with_secure_limits for generated candidates. Restoring
+native execution requires a backend that truthfully advertises and enforces the
+strict envelope; timeout and rlimit remain defense in depth only.

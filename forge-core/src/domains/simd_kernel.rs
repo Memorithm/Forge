@@ -28,8 +28,11 @@ use crate::candidate::{Candidate, CandidateId};
 use crate::criterion_parser::parse_and_validate_metrics;
 use crate::domain::{Domain, Score};
 use crate::error::{ForgeError, Result};
-use crate::isolation::run_with_timeout;
+use crate::isolation::run_untrusted_candidate;
 use crate::trial::Trial;
+
+const NATIVE_CANDIDATE_MAX_MEMORY_BYTES: u64 = 4 * 1024 * 1024 * 1024;
+const NATIVE_CANDIDATE_MAX_FILE_SIZE_BYTES: u64 = 2 * 1024 * 1024 * 1024;
 
 /// Harnais `main.rs` de vérification. Le candidat ne fournit que
 /// `compute_kernel` (dans `lib.rs`) ; ce harnais — qu'il ne contrôle pas —
@@ -433,7 +436,14 @@ pub fn compute_kernel(c: &mut [f64], a: &[f64], b: &[f64], n: usize) {
             .current_dir(&env_path)
             .env("RUSTFLAGS", "-C target-cpu=native -C opt-level=3");
 
-        if run_with_timeout(comp_cmd, self.compile_timeout).is_err() {
+        if run_untrusted_candidate(
+            comp_cmd,
+            self.compile_timeout,
+            NATIVE_CANDIDATE_MAX_MEMORY_BYTES,
+            NATIVE_CANDIDATE_MAX_FILE_SIZE_BYTES,
+        )
+        .is_err()
+        {
             let _ = fs::remove_dir_all(&env_path);
             return Ok(false);
         }
@@ -446,7 +456,12 @@ pub fn compute_kernel(c: &mut [f64], a: &[f64], b: &[f64], n: usize) {
             .current_dir(&env_path)
             .env("RUSTFLAGS", "-C target-cpu=native -C opt-level=3");
 
-        let run_res = run_with_timeout(run_cmd, self.exec_timeout);
+        let run_res = run_untrusted_candidate(
+            run_cmd,
+            self.exec_timeout,
+            NATIVE_CANDIDATE_MAX_MEMORY_BYTES,
+            NATIVE_CANDIDATE_MAX_FILE_SIZE_BYTES,
+        );
         let _ = fs::remove_dir_all(&env_path);
 
         match run_res {
@@ -468,7 +483,12 @@ pub fn compute_kernel(c: &mut [f64], a: &[f64], b: &[f64], n: usize) {
             .current_dir(&env_path)
             .env("RUSTFLAGS", "-C target-cpu=native -C opt-level=3");
 
-        let bench_res = run_with_timeout(bench_cmd, Duration::from_secs(45));
+        let bench_res = run_untrusted_candidate(
+            bench_cmd,
+            Duration::from_secs(45),
+            NATIVE_CANDIDATE_MAX_MEMORY_BYTES,
+            NATIVE_CANDIDATE_MAX_FILE_SIZE_BYTES,
+        );
 
         if bench_res.is_err() {
             let _ = fs::remove_dir_all(&env_path);
