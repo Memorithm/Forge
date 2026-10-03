@@ -49,7 +49,7 @@ fn cheat_kernel_is_rejected() {
 }
 
 #[test]
-fn honest_baseline_passes() {
+fn honest_baseline_fails_closed_without_external_isolation() {
     let domain = SimdKernelDomain::new("/tmp/forge_simd_honest");
     let cand = domain.seed(&mut rand::rngs::StdRng::seed_from_u64(0)); // GEMM naïf de référence
     let trial = Trial {
@@ -60,7 +60,10 @@ fn honest_baseline_passes() {
     let ok = domain
         .verify(&cand, &trial)
         .expect("verify ne doit pas renvoyer d'erreur");
-    assert!(ok, "le GEMM naïf de référence DOIT passer la vérification");
+    assert!(
+        !ok,
+        "le GEMM naïf de référence doit rester refusé sans isolation externe"
+    );
 }
 
 #[test]
