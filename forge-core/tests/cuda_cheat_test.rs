@@ -62,3 +62,54 @@ fn honest_baseline_passes() {
         "le GEMM naif de reference DOIT passer la verification GPU"
     );
 }
+
+#[test]
+fn non_finite_empty_and_partial_kernels_are_rejected_when_cuda_is_available() {
+    if !nvcc_available() {
+        eprintln!("nvcc absent — test CUDA ignore");
+        return;
+    }
+    let domain = CudaKernelDomain::new("/tmp/forge_cuda_numeric_guards");
+    let cases = [
+        (
+            "nan",
+            r#"extern "C" __global__ void compute_kernel(double* c, const double*, const double*, int n) {
+    int i = blockIdx.y * blockDim.y * n + blockIdx.x * blockDim.x + threadIdx.y * n + threadIdx.x;
+    if (i < n * n) c[i] = __longlong_as_double(0x7ff8000000000000ULL);
+}"#,
+        ),
+        (
+            "infinity",
+            r#"extern "C" __global__ void compute_kernel(double* c, const double*, const double*, int n) {
+    int i = blockIdx.y * blockDim.y * n + blockIdx.x * blockDim.x + threadIdx.y * n + threadIdx.x;
+    if (i < n * n) c[i] = __longlong_as_double(0x7ff0000000000000ULL);
+}"#,
+        ),
+        (
+            "empty",
+            r#"extern "C" __global__ void compute_kernel(double*, const double*, const double*, int) {}"#,
+        ),
+        (
+            "partially written",
+            r#"extern "C" __global__ void compute_kernel(double* c, const double*, const double*, int n) {
+    int i = blockIdx.y * blockDim.y * n + blockIdx.x * blockDim.x + threadIdx.y * n + threadIdx.x;
+    if (i + 1 < n * n) c[i] = 0.0;
+}"#,
+        ),
+    ];
+
+    for (offset, (label, source)) in cases.into_iter().enumerate() {
+        let cand = CudaCode {
+            source: source.to_string(),
+            id: fnv1a(source),
+        };
+        let trial = Trial {
+            generation: 0,
+            seed: 1900 + offset as u64,
+        };
+        let ok = domain
+            .verify(&cand, &trial)
+            .expect("verify CUDA ne doit pas renvoyer d'erreur");
+        assert!(!ok, "le kernel CUDA {label} doit être rejeté");
+    }
+}

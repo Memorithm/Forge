@@ -68,7 +68,15 @@ fn main() {
     compute_kernel(&mut c, &a, &b, n);
     let mut max_diff = 0.0f64;
     for i in 0..n * n {
+        if !c_ref[i].is_finite() || !c[i].is_finite() {
+            eprintln!("NON_FINITE_OUTPUT index={} reference={:?} actual={:?}", i, c_ref[i], c[i]);
+            std::process::exit(102);
+        }
         let d = (c_ref[i] - c[i]).abs();
+        if !d.is_finite() {
+            eprintln!("NON_FINITE_DIFFERENCE index={} difference={:?}", i, d);
+            std::process::exit(102);
+        }
         if d > max_diff { max_diff = d; }
     }
     if max_diff > 1e-7 {
