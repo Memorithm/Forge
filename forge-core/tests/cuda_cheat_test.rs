@@ -1,6 +1,7 @@
 //! Garde-fou anti-regression du domaine CUDA — PREUVE D'EXECUTION GPU.
 //! Harnais main.cu : A,B aleatoires depuis trial.seed, reference CPU, tolerance 1e-6*N.
-//! c[i]=N doit etre recale ; le GEMM naif doit passer. S'auto-ignore si nvcc absent.
+//! c[i]=N doit etre recale ; sans isolation externe, meme le GEMM naif doit
+//! etre refuse avant execution. S'auto-ignore si nvcc absent.
 use forge_core::domains::cuda_kernel::{CudaCode, CudaKernelDomain};
 use forge_core::{fnv1a, Domain, Trial};
 use rand::SeedableRng;
@@ -43,7 +44,7 @@ fn cheat_kernel_is_rejected() {
 }
 
 #[test]
-fn honest_baseline_passes() {
+fn honest_baseline_fails_closed_without_external_isolation() {
     if !nvcc_available() {
         eprintln!("nvcc absent — test CUDA ignore");
         return;
@@ -58,8 +59,8 @@ fn honest_baseline_passes() {
         .verify(&cand, &trial)
         .expect("verify ne doit pas renvoyer d'erreur");
     assert!(
-        ok,
-        "le GEMM naif de reference DOIT passer la verification GPU"
+        !ok,
+        "le GEMM naif de reference doit rester refuse sans isolation externe"
     );
 }
 
