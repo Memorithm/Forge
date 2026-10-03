@@ -735,20 +735,24 @@ pub fn reconstruct(compressed: &[f64], _shape: &[usize], rebuilt: &mut [f64]) {
         let mut run_cmd = Command::new("cargo");
         run_cmd.arg("run").arg("--release").current_dir(&env_path);
 
-        let (l2_error, param_count) =
-            match run_untrusted_candidate(run_cmd, self.exec_timeout, self.max_mem, self.max_disk) {
-                Ok(stdout) => {
-                    let l2 = Self::extract_l2_error(&stdout).unwrap_or(f64::INFINITY);
-                    let params = Self::extract_params(&stdout).unwrap_or(f64::INFINITY);
-                    (l2, params)
-                }
-                Err(_) => {
-                    self.clean_env(&env_path);
-                    return Err(ForgeError::Evaluation(
-                        "Échec d'exécution durant la mesure L2".into(),
-                    ));
-                }
-            };
+        let (l2_error, param_count) = match run_untrusted_candidate(
+            run_cmd,
+            self.exec_timeout,
+            self.max_mem,
+            self.max_disk,
+        ) {
+            Ok(stdout) => {
+                let l2 = Self::extract_l2_error(&stdout).unwrap_or(f64::INFINITY);
+                let params = Self::extract_params(&stdout).unwrap_or(f64::INFINITY);
+                (l2, params)
+            }
+            Err(_) => {
+                self.clean_env(&env_path);
+                return Err(ForgeError::Evaluation(
+                    "Échec d'exécution durant la mesure L2".into(),
+                ));
+            }
+        };
 
         // ── Objectif 2 : Latence via Criterion ──
         let mut bench_cmd = Command::new("cargo");

@@ -531,9 +531,8 @@ pub fn run_untrusted_candidate(
 #[cfg(test)]
 mod isolation_contract_tests {
     use super::{
-        posix_supervised_backend_capabilities, run_untrusted_candidate,
-        CandidateExecutionEnvelope, CandidateNetworkPolicy, IsolationClass,
-        CANDIDATE_EXECUTION_ENVELOPE_VERSION,
+        posix_supervised_backend_capabilities, run_untrusted_candidate, CandidateExecutionEnvelope,
+        CandidateNetworkPolicy, IsolationClass, CANDIDATE_EXECUTION_ENVELOPE_VERSION,
     };
     use std::process::Command;
     use std::time::Duration;
@@ -616,7 +615,10 @@ mod isolation_contract_tests {
         .expect_err("the supervised POSIX backend must fail closed");
 
         assert!(error.to_string().contains("does not satisfy"));
-        assert!(!marker.exists(), "command must not be spawned before admission");
+        assert!(
+            !marker.exists(),
+            "command must not be spawned before admission"
+        );
     }
 
     #[test]
