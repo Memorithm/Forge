@@ -70,7 +70,10 @@ int main() {
     for (int i = 0; i < N * N; i++) {
         h_a[i] = rng_f64(&s) * 2.0 - 1.0;
         h_b[i] = rng_f64(&s) * 2.0 - 1.0;
-        h_c[i] = 0.0;
+        // Sentinel copied to the device before launch: empty and partially
+        // written kernels fail deterministically instead of observing
+        // uninitialised device memory.
+        h_c[i] = 1.0e300;
     }
 
     // Reference CPU (GEMM naif) — possedee par le harnais, pas par le candidat.
@@ -88,6 +91,7 @@ int main() {
     cudaMalloc(&d_c, bytes);
     cudaMemcpy(d_a, h_a, bytes, cudaMemcpyHostToDevice);
     cudaMemcpy(d_b, h_b, bytes, cudaMemcpyHostToDevice);
+    cudaMemcpy(d_c, h_c, bytes, cudaMemcpyHostToDevice);
 
     dim3 threadsPerBlock(16, 16);
     dim3 blocksPerGrid((N + 15) / 16, (N + 15) / 16);
@@ -121,7 +125,20 @@ int main() {
     // Verification mathematique contre la reference CPU.
     double max_diff = 0.0;
     for (int i = 0; i < N * N; i++) {
+        if (!std::isfinite(h_ref[i]) || !std::isfinite(h_c[i])) {
+            fprintf(stderr, "NON_FINITE_OUTPUT: index=%d reference=%.17g actual=%.17g\n",
+                    i, h_ref[i], h_c[i]);
+            cudaFree(d_a); cudaFree(d_b); cudaFree(d_c);
+            free(h_a); free(h_b); free(h_c); free(h_ref);
+            return 102;
+        }
         double d = fabs(h_c[i] - h_ref[i]);
+        if (!std::isfinite(d)) {
+            fprintf(stderr, "NON_FINITE_DIFFERENCE: index=%d difference=%.17g\n", i, d);
+            cudaFree(d_a); cudaFree(d_b); cudaFree(d_c);
+            free(h_a); free(h_b); free(h_c); free(h_ref);
+            return 102;
+        }
         if (d > max_diff) max_diff = d;
     }
     // Tolerance adaptee a l'accumulation O(N) en double precision.
@@ -632,5 +649,14 @@ mod tests {
         assert_eq!(names.len(), 2);
         assert_eq!(names[0], "latency_ns");
         assert_eq!(names[1], "ptx_instruction_count");
+    }
+
+    #[test]
+    fn verification_harness_fails_closed_on_non_finite_and_unwritten_output() {
+        assert!(VERIFY_MAIN_CU.contains("!std::isfinite(h_ref[i])"));
+        assert!(VERIFY_MAIN_CU.contains("!std::isfinite(h_c[i])"));
+        assert!(VERIFY_MAIN_CU.contains("!std::isfinite(d)"));
+        assert!(VERIFY_MAIN_CU.contains("h_c[i] = 1.0e300"));
+        assert!(VERIFY_MAIN_CU.contains("cudaMemcpy(d_c, h_c, bytes, cudaMemcpyHostToDevice)"));
     }
 }
