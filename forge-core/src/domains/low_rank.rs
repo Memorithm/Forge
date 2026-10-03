@@ -2,8 +2,10 @@
 //!
 //! Ce domaine génère, compile et évalue des décompositions de tenseurs
 //! d'ordre N en rangs faibles. Chaque candidat est du code Rust brut
-//! (`TensorCode`) compilé dans un répertoire isolé avec limites rlimit,
-//! benchmarké via Criterion, et validé statistiquement.
+//! (TensorCode) compilé et exécuté uniquement après admission par l'enveloppe
+//! stricte de code non fiable, benchmarké via Criterion, et validé
+//! statistiquement. En l'absence d'un backend conteneur (ou plus fort), le
+//! domaine refuse l'exécution avant le spawn.
 //!
 //! ## Contrat du candidat
 //! ```rust,ignore
@@ -45,7 +47,7 @@ use crate::candidate::CandidateId;
 use crate::criterion_parser::parse_and_validate_metrics;
 use crate::domain::{Domain, Score};
 use crate::error::ForgeError;
-use crate::isolation::run_with_secure_limits;
+use crate::isolation::run_untrusted_candidate;
 use crate::trial::Trial;
 
 /// Constructions interdites dans le code candidat : elles permettent de faire
@@ -667,7 +669,7 @@ pub fn reconstruct(compressed: &[f64], _shape: &[usize], rebuilt: &mut [f64]) {
             .arg("--release")
             .current_dir(&env_path);
 
-        if run_with_secure_limits(
+        if run_untrusted_candidate(
             compile_cmd,
             self.compile_timeout,
             self.max_mem,
@@ -684,7 +686,7 @@ pub fn reconstruct(compressed: &[f64], _shape: &[usize], rebuilt: &mut [f64]) {
         run_cmd.arg("run").arg("--release").current_dir(&env_path);
 
         let run_res =
-            run_with_secure_limits(run_cmd, self.exec_timeout, self.max_mem, self.max_disk);
+            run_untrusted_candidate(run_cmd, self.exec_timeout, self.max_mem, self.max_disk);
         self.clean_env(&env_path);
 
         match run_res {
@@ -715,7 +717,7 @@ pub fn reconstruct(compressed: &[f64], _shape: &[usize], rebuilt: &mut [f64]) {
             .arg("--release")
             .current_dir(&env_path);
 
-        if run_with_secure_limits(
+        if run_untrusted_candidate(
             compile_cmd,
             self.compile_timeout,
             self.max_mem,
@@ -734,7 +736,7 @@ pub fn reconstruct(compressed: &[f64], _shape: &[usize], rebuilt: &mut [f64]) {
         run_cmd.arg("run").arg("--release").current_dir(&env_path);
 
         let (l2_error, param_count) =
-            match run_with_secure_limits(run_cmd, self.exec_timeout, self.max_mem, self.max_disk) {
+            match run_untrusted_candidate(run_cmd, self.exec_timeout, self.max_mem, self.max_disk) {
                 Ok(stdout) => {
                     let l2 = Self::extract_l2_error(&stdout).unwrap_or(f64::INFINITY);
                     let params = Self::extract_params(&stdout).unwrap_or(f64::INFINITY);
@@ -756,7 +758,7 @@ pub fn reconstruct(compressed: &[f64], _shape: &[usize], rebuilt: &mut [f64]) {
             .arg("tt_bench")
             .current_dir(&env_path);
 
-        let latency_ns = match run_with_secure_limits(
+        let latency_ns = match run_untrusted_candidate(
             bench_cmd,
             self.bench_timeout,
             self.max_mem,

@@ -506,12 +506,37 @@ pub fn run_with_secure_limits(
     run_with_execution_envelope(cmd, &envelope)
 }
 
+/// Runs generated or mutated native code under Forge's strict untrusted-code
+/// envelope.
+///
+/// The current local POSIX backend is deliberately only a supervised process,
+/// so this function fails closed before spawning until a container-or-stronger
+/// backend with deny-all networking is wired in. Native domains must use this
+/// entry point instead of silently falling back to timeout/rlimit execution.
+pub fn run_untrusted_candidate(
+    cmd: std::process::Command,
+    timeout: std::time::Duration,
+    max_memory_bytes: u64,
+    max_file_size_bytes: u64,
+) -> Result<String> {
+    let wall_clock_ms = u64::try_from(timeout.as_millis()).unwrap_or(u64::MAX);
+    let envelope = CandidateExecutionEnvelope::untrusted_generated_code(
+        wall_clock_ms,
+        max_memory_bytes,
+        max_file_size_bytes,
+    );
+    run_with_execution_envelope(cmd, &envelope)
+}
+
 #[cfg(test)]
 mod isolation_contract_tests {
     use super::{
-        posix_supervised_backend_capabilities, CandidateExecutionEnvelope, CandidateNetworkPolicy,
-        IsolationClass, CANDIDATE_EXECUTION_ENVELOPE_VERSION,
+        posix_supervised_backend_capabilities, run_untrusted_candidate,
+        CandidateExecutionEnvelope, CandidateNetworkPolicy, IsolationClass,
+        CANDIDATE_EXECUTION_ENVELOPE_VERSION,
     };
+    use std::process::Command;
+    use std::time::Duration;
 
     #[test]
     fn supervised_process_is_not_a_security_boundary() {
@@ -570,5 +595,42 @@ mod isolation_contract_tests {
             max_file_size_bytes: 1,
         };
         assert!(envelope.validate().is_err());
+    }
+
+    #[test]
+    fn strict_untrusted_runner_rejects_before_spawn_on_posix_backend() {
+        let marker = std::env::temp_dir().join(format!(
+            "forge-untrusted-runner-marker-{}",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_file(&marker);
+
+        let mut command = Command::new("touch");
+        command.arg(&marker);
+        let error = run_untrusted_candidate(
+            command,
+            Duration::from_secs(1),
+            64 * 1024 * 1024,
+            1024 * 1024,
+        )
+        .expect_err("the supervised POSIX backend must fail closed");
+
+        assert!(error.to_string().contains("does not satisfy"));
+        assert!(!marker.exists(), "command must not be spawned before admission");
+    }
+
+    #[test]
+    fn native_domains_do_not_call_legacy_supervised_runners() {
+        let simd = include_str!("domains/simd_kernel.rs");
+        let cuda = include_str!("domains/cuda_kernel.rs");
+        let low_rank = include_str!("domains/low_rank.rs");
+
+        for source in [simd, cuda] {
+            assert!(!source.contains("run_with_timeout("));
+        }
+        assert!(!low_rank.contains("run_with_secure_limits("));
+        for source in [simd, cuda, low_rank] {
+            assert!(source.contains("run_untrusted_candidate("));
+        }
     }
 }

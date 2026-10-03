@@ -17,8 +17,10 @@
 //!
 //! ## 4 Piliers industriels
 //! - [`diagnostics`] : capture des échecs (Pilier 1) + parsing Criterion (Pilier 2)
-//! - [`isolation::CandidateExecutionEnvelope`] : exigences explicites d'isolation et de ressources
-//! - [`isolation::run_with_secure_limits`] : compatibilité POSIX timeout + rlimit, sans prétention de sandbox
+//! - [isolation::CandidateExecutionEnvelope] : exigences explicites d'isolation et de ressources
+//! - [isolation::run_untrusted_candidate] : admission stricte des candidats natifs, avec refus
+//!   avant spawn lorsque le backend local ne fournit pas une frontière conteneur et un réseau coupé
+//! - [isolation::run_with_secure_limits] : compatibilité POSIX timeout + rlimit, sans prétention de sandbox
 //! - [`registry::AlgorithmRegistry`] : registre transactionnel Sled avec lignage (Pilier 4)
 //! - [`domains::simd_kernel`] : micro-kernels SIMD auto-vectorisés (Pilier 3)
 //! - [`mutation::llm_mutator`] : mutation macroscopique par LLM avec injection de feedback
@@ -63,8 +65,8 @@ pub use evolve::{
     DeserializeFromSource, Engine, EngineState, Individual, Report,
 };
 pub use isolation::{
-    posix_supervised_backend_capabilities, run_with_execution_envelope, run_with_timeout,
-    CandidateBackendCapabilities, CandidateExecutionEnvelope, CandidateNetworkPolicy,
-    IsolationClass, CANDIDATE_EXECUTION_ENVELOPE_VERSION,
+    posix_supervised_backend_capabilities, run_untrusted_candidate, run_with_execution_envelope,
+    run_with_timeout, CandidateBackendCapabilities, CandidateExecutionEnvelope,
+    CandidateNetworkPolicy, IsolationClass, CANDIDATE_EXECUTION_ENVELOPE_VERSION,
 };
 pub use trial::Trial;
