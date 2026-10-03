@@ -3,7 +3,7 @@ use forge_core::{Domain, Trial};
 use rand::SeedableRng;
 
 #[test]
-fn test_low_rank_baseline_compiles_and_runs() {
+fn test_low_rank_baseline_fails_closed_without_external_isolation() {
     let workspace = "/tmp/forge_lowrank_test";
     let _ = std::fs::remove_dir_all(workspace);
 
@@ -14,14 +14,12 @@ fn test_low_rank_baseline_compiles_and_runs() {
         seed: 100,
     };
 
-    // Le candidat baseline doit passer la vérification
+    // Même le baseline est du code généré : le backend POSIX local ne doit
+    // jamais l'exécuter sans frontière d'isolation externe.
     let valid = domain
         .verify(&cand, &trial)
         .expect("verify should not error");
-    assert!(
-        valid,
-        "Baseline candidate should compile and run successfully"
-    );
+    assert!(!valid, "baseline must fail closed before native execution");
 
     // Nettoyage
     let _ = std::fs::remove_dir_all(workspace);
@@ -51,7 +49,7 @@ fn test_low_rank_invalid_code_fails_verify() {
 }
 
 #[test]
-fn test_low_rank_measure_returns_three_objectives() {
+fn test_low_rank_measure_fails_closed_without_external_isolation() {
     let workspace = "/tmp/forge_lowrank_measure";
     let _ = std::fs::remove_dir_all(workspace);
 
@@ -62,11 +60,13 @@ fn test_low_rank_measure_returns_three_objectives() {
         seed: 200,
     };
 
-    let objectives = domain
+    let error = domain
         .measure(&cand, &trial)
-        .expect("measure should succeed");
-    assert_eq!(objectives.len(), 3);
-    assert!(objectives.iter().all(|v| v.is_finite()));
+        .expect_err("measure must not execute without external isolation");
+    assert!(
+        error.to_string().contains("Échec de compilation"),
+        "unexpected fail-closed error: {error}"
+    );
 
     let _ = std::fs::remove_dir_all(workspace);
 }
