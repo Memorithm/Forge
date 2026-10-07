@@ -3,9 +3,10 @@
 //! un entier u32 big-endian contenant la taille, suivi du payload sérialisé.
 //!
 //! Les adresses `tls://host:port` utilisent TLS avec validation de la chaîne et
-//! du nom du certificat worker via `FORGE_TLS_CA_CERT`. Les adresses historiques
-//! `host:port` restent TCP non authentifié et doivent être réservées à un réseau
-//! de confiance ou à la boucle locale.
+//! du nom du certificat worker via `FORGE_TLS_CA_CERT`. Le maître présente son
+//! identité via `FORGE_TLS_CLIENT_CERT` et `FORGE_TLS_CLIENT_KEY` pour mTLS.
+//! Les adresses historiques `host:port` restent TCP non authentifié; les nouveaux
+//! workers n'écoutent en plaintext que sur la boucle locale.
 
 use std::io::{Read, Write};
 use std::net::{SocketAddr, TcpStream};

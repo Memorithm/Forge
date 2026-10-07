@@ -20,13 +20,13 @@ The worker result envelope records the result protocol version, an independent F
 
 ### Authenticated TLS transport
 
-Worker addresses beginning with `tls://` use standard TLS through rustls. The master requires `FORGE_TLS_CA_CERT` and validates the worker certificate chain and the DNS name/SAN corresponding to the `tls://host:port` endpoint. A TLS worker is enabled by defining both `FORGE_WORKER_TLS_CERT` and `FORGE_WORKER_TLS_KEY` on the worker.
+Worker addresses beginning with `tls://` use mutual TLS through rustls. The master requires `FORGE_TLS_CA_CERT` and validates the worker certificate chain and the DNS name/SAN corresponding to the `tls://host:port` endpoint. It presents its identity using `FORGE_TLS_CLIENT_CERT` and `FORGE_TLS_CLIENT_KEY`. A TLS worker requires its certificate/key, a dedicated master CA (`FORGE_WORKER_TLS_CLIENT_CA`), and an explicit PEM allowlist of master **leaf certificates** (`FORGE_WORKER_TLS_ALLOWED_CLIENT_CERTS`). Chain validation alone does not authorize every certificate issued by that CA: the worker compares the authenticated leaf against the allowlist before reading an application frame.
 
 This authenticates the worker endpoint to the master according to the configured CA. It does **not** constitute cryptographic execution attestation: a correctly authenticated worker can still return dishonest or compromised measurements.
 
-Plain `host:port` worker addresses remain supported for compatibility and are **not authenticated or encrypted**. Restrict them to loopback, a trusted network, or an independently authenticated encrypted tunnel/VPN. Do not expose a plaintext Forge worker directly to an untrusted network.
+Plain `host:port` worker addresses remain supported for compatibility and are **not authenticated or encrypted**. The worker refuses non-loopback plaintext listeners. Every non-loopback listener additionally requires an exact IP allowlist (`FORGE_WORKER_ALLOWED_PEERS`); IP admission is defense in depth and does not replace client-certificate authentication.
 
-The current TLS mode authenticates the worker/server certificate; it does not yet require a client certificate from the master. Operators that require mutual endpoint authentication should additionally restrict worker network access until explicit mTLS support exists.
+Admission is bounded before task spawn, including TLS handshakes and complete frame reads/writes. A slow trickle cannot reset a frame deadline. The permit stays owned by an in-flight blocking evaluation even if its connection handler is cancelled, and remains held through response transmission. See [WORKER_TRANSPORT.md](docs/WORKER_TRANSPORT.md) for defaults, migration and certificate rotation. Local unauthenticated TCP trusts local users; use mTLS where that trust is inappropriate.
 
 ## Resource isolation
 

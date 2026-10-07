@@ -4,11 +4,10 @@
 //! big-endian, exécute la vérification puis la mesure du candidat et renvoie
 //! une enveloppe de résultat versionnée contenant la provenance descriptive.
 //!
-//! Quand `FORGE_WORKER_TLS_CERT` et `FORGE_WORKER_TLS_KEY` sont définis, les
-//! connexions sont protégées par TLS standard via rustls. Sinon le worker reste
-//! en TCP non authentifié, destiné uniquement à la boucle locale ou à un réseau
-//! de confiance explicitement protégé.
+//! TLS requires an authenticated, explicitly allowed master certificate.
+//! Plaintext is loopback-only. Admission and transport phases are bounded.
 
+mod admission;
 mod tls;
 
 use std::net::SocketAddr;
@@ -25,8 +24,11 @@ use forge_core::{fnv1a, Domain, Trial};
 use serde::{de::DeserializeOwned, Serialize};
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 use tokio::net::TcpListener;
+use tokio::sync::{OwnedSemaphorePermit, Semaphore};
+use tokio::time::timeout;
 
-use crate::tls::acceptor_from_env;
+use crate::admission::AdmissionPolicy;
+use crate::tls::{acceptor_from_env, allowed_clients_from_env};
 
 enum WorkerDomain {
     LowRank(TensorTrainDomain),
@@ -221,12 +223,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .parse()
         .map_err(|e| format!("Adresse worker invalide (FORGE_WORKER_ADDR): {e}"))?;
 
+    // Fail closed before creating scratch state, probing hardware or listening.
+    let policy = AdmissionPolicy::from_env()?;
+    let tls_acceptor = acceptor_from_env()?;
+    let allowed_clients = allowed_clients_from_env()?;
+    policy.validate_listener(addr, tls_acceptor.is_some())?;
+    let admissions = Arc::new(Semaphore::new(policy.max_connections));
+
     let domain_kind =
         std::env::var("FORGE_WORKER_DOMAIN").unwrap_or_else(|_| "low_rank".to_string());
     let domain = init_domain(&domain_kind)
         .map_err(|e| format!("Initialisation domaine '{domain_kind}' échouée: {e}"))?;
     let context = worker_execution_context(domain.name());
-    let tls_acceptor = acceptor_from_env()?;
 
     tracing::info!(
         worker_id = %context.worker_id,
@@ -276,18 +284,38 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             conn = listener.accept() => {
                 match conn {
                     Ok((socket, peer)) => {
+                        if !policy.allows(peer) {
+                            tracing::warn!("[WORKER] peer denied: {peer}");
+                            continue;
+                        }
+                        let Ok(permit) = Arc::clone(&admissions).try_acquire_owned() else {
+                            tracing::warn!("[WORKER] admission limit reached: {peer}");
+                            continue;
+                        };
                         let domain = Arc::clone(&domain);
                         let context = context.clone();
                         let tls_acceptor = tls_acceptor.clone();
+                        let allowed_clients = allowed_clients.clone();
+                        let policy = policy.clone();
                         tokio::spawn(async move {
                             let result = if let Some(acceptor) = tls_acceptor {
-                                match acceptor.accept(socket).await {
-                                    Ok(mut tls_stream) => handle_connection(domain, context, &mut tls_stream).await,
-                                    Err(e) => Err(format!("Échec handshake TLS: {e}").into()),
+                                match timeout(policy.handshake_timeout, acceptor.accept(socket)).await {
+                                    Ok(Ok(mut tls_stream)) => {
+                                        let allowed = tls_stream.get_ref().1.peer_certificates()
+                                            .and_then(|certs| certs.first())
+                                            .is_some_and(|leaf| allowed_clients.contains(leaf));
+                                        if allowed {
+                                            handle_connection(domain, context, &mut tls_stream, &policy, permit).await
+                                        } else {
+                                            Err("Master certificate not in explicit allowlist".into())
+                                        }
+                                    }
+                                    Ok(Err(e)) => Err(format!("Échec handshake TLS: {e}").into()),
+                                    Err(_) => Err("TLS handshake deadline exceeded".into()),
                                 }
                             } else {
                                 let mut socket = socket;
-                                handle_connection(domain, context, &mut socket).await
+                                handle_connection(domain, context, &mut socket, &policy, permit).await
                             };
                             if let Err(e) = result {
                                 tracing::warn!("[WORKER] erreur traitement {peer}: {e}");
@@ -330,11 +358,16 @@ async fn handle_connection<S>(
     domain: Arc<WorkerDomain>,
     context: WorkerExecutionContext,
     socket: &mut S,
+    policy: &AdmissionPolicy,
+    permit: OwnedSemaphorePermit,
 ) -> Result<(), Box<dyn std::error::Error>>
 where
     S: AsyncRead + AsyncWrite + Unpin,
 {
-    let payload: EvaluationPayload = read_frame(socket).await?;
+    // One total deadline covers both header and body, including slow trickles.
+    let payload: EvaluationPayload = timeout(policy.read_timeout, read_frame(socket))
+        .await
+        .map_err(|_| "Frame read deadline exceeded")??;
 
     tracing::info!(
         "[WORKER] évaluation candidat {} | génération {} | source_hash={:016x}",
@@ -354,10 +387,12 @@ where
     let generation = payload.generation;
     let response_domain = domain.name().to_string();
 
-    let result = tokio::task::spawn_blocking(move || {
+    let (result, _connection_permit) = tokio::task::spawn_blocking(move || {
+        // A disconnected/cancelled handler must not free admission while native
+        // evaluation is still running: spawn_blocking cannot be aborted.
         let (is_valid, objectives, error_message) =
             domain.evaluate(&source_code, candidate_id, &trial);
-        EvaluationResult {
+        let result = EvaluationResult {
             protocol_version: PROTOCOL_VERSION,
             candidate_id,
             source_hash,
@@ -369,12 +404,15 @@ where
             is_valid,
             objectives,
             error_message,
-        }
+        };
+        (result, permit)
     })
     .await
     .map_err(|e| format!("Panique dans le thread d'évaluation (candidat {candidate_id}): {e}"))?;
 
-    write_frame(socket, &result).await?;
+    timeout(policy.write_timeout, write_frame(socket, &result))
+        .await
+        .map_err(|_| "Frame write deadline exceeded")??;
 
     tracing::info!(
         "[WORKER] candidat {} — valid={} | obj={:?} | env={}",

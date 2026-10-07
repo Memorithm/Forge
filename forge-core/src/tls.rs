@@ -72,9 +72,35 @@ pub(crate) fn connect_tls(
         ForgeError::Evaluation("FORGE_TLS_CA_CERT est requis pour une adresse worker tls://".into())
     })?;
     let roots = load_root_store(&ca_path)?;
-    let config = ClientConfig::builder()
-        .with_root_certificates(roots)
-        .with_no_client_auth();
+    let builder = ClientConfig::builder().with_root_certificates(roots);
+    let optional = |name| match std::env::var(name) {
+        Ok(value) => Ok(Some(value)),
+        Err(std::env::VarError::NotPresent) => Ok(None),
+        Err(error) => Err(ForgeError::Evaluation(format!("Invalid {name}: {error}"))),
+    };
+    let config = match (
+        optional("FORGE_TLS_CLIENT_CERT")?,
+        optional("FORGE_TLS_CLIENT_KEY")?,
+    ) {
+        (None, None) => builder.with_no_client_auth(),
+        (Some(cert_path), Some(key_path)) => {
+            let credentials = || -> std::result::Result<_, Box<dyn std::error::Error>> {
+                let certs = rustls_pemfile::certs(&mut BufReader::new(File::open(cert_path)?))
+                    .collect::<std::result::Result<Vec<_>, _>>()?;
+                let key = rustls_pemfile::private_key(&mut BufReader::new(File::open(key_path)?))?
+                    .ok_or("No TLS client private key")?;
+                Ok(builder.with_client_auth_cert(certs, key)?)
+            };
+            credentials().map_err(|error| {
+                ForgeError::Evaluation(format!("Invalid TLS client credentials: {error}"))
+            })?
+        }
+        _ => {
+            return Err(ForgeError::Evaluation(
+                "FORGE_TLS_CLIENT_CERT and FORGE_TLS_CLIENT_KEY must be set together".into(),
+            ))
+        }
+    };
 
     let server_name = ServerName::try_from(endpoint.host.clone()).map_err(|e| {
         ForgeError::Evaluation(format!("Nom TLS worker invalide '{}': {e}", endpoint.host))

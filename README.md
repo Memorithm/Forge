@@ -67,7 +67,9 @@ FORGE_MAB=1 cargo run -p forge-core --features bandit --bin run_simd
 
 Le Master et `forge-worker` utilisent un protocole bincode encadré par une longueur explicite. Les messages sont bornés et le Master vérifie notamment l'identité du candidat retourné et la validité numérique des objectifs.
 
-Ce protocole **n'est pas un protocole de sécurité** : il ne fournit actuellement ni TLS, ni authentification, ni attestation cryptographique. Les workers doivent être considérés comme des évaluateurs de confiance et déployés sur un réseau de confiance ou derrière un tunnel authentifié.
+Le transport `tls://` vérifie les certificats serveur et client, avec une liste explicite de certificats maîtres autorisés. Le worker refuse toute écoute non-loopback sans mTLS et liste de pairs IP autorisés. Le TCP historique reste limité à la boucle locale. Voir [configuration du worker](docs/WORKER_TRANSPORT.md).
+
+Les identités de transport et la provenance descriptive des résultats ne constituent pas une attestation cryptographique d'exécution : un worker authentifié peut encore être compromis ou retourner des mesures mensongères.
 
 ## Sécurité du code généré
 
