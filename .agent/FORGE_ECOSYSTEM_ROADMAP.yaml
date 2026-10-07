@@ -576,3 +576,28 @@ ax_isolated_candidate_program:
     scope: AXF3
     status: active
     objective: worker_enforceable_capability_advertisement
+
+worker_transport_admission_2026_10_07:
+  audit_finding: FORGE-03
+  status: candidate_pending_exact_head_CI_and_post_merge_validation
+  pull_request: https://github.com/Memorithm/Forge/pull/51
+  candidate_head: aef06877b5630430b43d3f54a450dfe9b54a1dff
+  trust_contract:
+    - remote_worker_listeners_require_mutual_TLS_and_explicit_peer_IP_allowlist
+    - authenticated_master_leaf_must_match_explicit_PEM_allowlist_after_CA_validation
+    - forge_core_master_presents_configured_client_certificate_and_key
+    - plaintext_worker_listeners_are_loopback_only
+    - admission_is_bounded_before_task_spawn_and_includes_handshake_IO_and_evaluation
+    - handshake_read_and_write_have_independent_total_deadlines
+    - blocking_evaluation_keeps_admission_permit_when_async_handler_is_cancelled
+  executed_candidate_evidence:
+    - locked_offline_ARM64_network_isolated_bwrap_worker_suite_4_unit_tests_and_1_actual_binary_TLS_TCP_corpus_passed
+    - actual_absent_foreign_and_CA_valid_unlisted_clients_are_rejected
+    - authenticated_forge_core_dispatch_preserves_native_isolation_refusal
+  compatibility:
+    - server_only_worker_TLS_configuration_must_migrate_to_client_CA_and_master_leaf_allowlist
+    - configuration_and_certificate_rotation_are_startup_loaded_and_documented
+  limitations:
+    - does_not_complete_FG1_FG2_FG6_FGML2_or_ML_5_of_5
+    - no_execution_attestation_campaign_wide_replay_registry_or_hardware_qualification
+    - strict_generated_native_code_isolation_remains_fail_closed
