@@ -579,9 +579,12 @@ ax_isolated_candidate_program:
 
 worker_transport_admission_2026_10_07:
   audit_finding: FORGE-03
-  status: candidate_pending_exact_head_CI_and_post_merge_validation
+  status: complete_narrow_slice_exact_head_and_integrated_CI_qualified
   pull_request: https://github.com/Memorithm/Forge/pull/51
   candidate_head: aef06877b5630430b43d3f54a450dfe9b54a1dff
+  merge_commit: 8df26b891d87eeabb3e7102ce3c43de7546fd0f4
+  integrated_tree: 15bfad4f8fcd72867f1b6c7f4432f01ce48fe062
+  integrated_CI: [37647966423, 37647966395, 37647966617]
   trust_contract:
     - remote_worker_listeners_require_mutual_TLS_and_explicit_peer_IP_allowlist
     - authenticated_master_leaf_must_match_explicit_PEM_allowlist_after_CA_validation
